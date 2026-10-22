@@ -1,0 +1,93 @@
+[package]
+name = "features"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lib]
+# criterion owns `cargo bench`; libtest would reject its flags.
+bench = false
+
+[dependencies]
+launcher-core = { workspace = true }
+index-apps = { workspace = true }
+index-files = { workspace = true }
+providers = { workspace = true }
+decision = { workspace = true }
+secrecy = { workspace = true }
+futures = { workspace = true }
+url = { workspace = true }
+tokio = { workspace = true, features = ["rt", "sync", "time", "macros", "net", "io-util"] }
+tokio-util = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+arc-swap = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+reqwest = { workspace = true }
+parking_lot = { workspace = true }
+win = { workspace = true }
+fend-core = { workspace = true }
+chrono = { workspace = true }
+chrono-tz = { workspace = true }
+quick-xml = { workspace = true }
+percent-encoding = { workspace = true }
+rusqlite = { workspace = true }
+regex = { workspace = true }
+sysinfo = { workspace = true }
+base64 = { workspace = true }
+sha2 = { workspace = true }
+rand = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+tempfile = { workspace = true }
+wiremock = { workspace = true }
+criterion = { workspace = true }
+
+[[bench]]
+name = "frecency"
+harness = false
+
+[[bench]]
+name = "math"
+harness = false
+
+[[bench]]
+name = "syscmd"
+harness = false
+
+[[bench]]
+name = "web"
+harness = false
+
+[[bench]]
+name = "projects"
+harness = false
+
+[[bench]]
+name = "command_all"
+harness = false
+
+[[bench]]
+name = "nlfind"
+harness = false
+
+[[bench]]
+name = "ports"
+harness = false
+
+[[bench]]
+name = "media"
+harness = false
+
+[[bench]]
+name = "explain"
+harness = false
+
+[[bench]]
+name = "capture"
+harness = false

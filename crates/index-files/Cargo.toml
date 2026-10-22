@@ -1,0 +1,28 @@
+[package]
+name = "index-files"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lib]
+# criterion owns `cargo bench`; libtest would reject its flags.
+bench = false
+
+[dependencies]
+launcher-core = { workspace = true }
+jwalk = { workspace = true }
+notify = { workspace = true }
+rayon = { workspace = true }
+arc-swap = { workspace = true }
+thiserror = { workspace = true }
+nucleo-matcher = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+criterion = { workspace = true }
+
+[[bench]]
+name = "find"
+harness = false

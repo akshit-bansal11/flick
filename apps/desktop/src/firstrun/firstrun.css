@@ -1,0 +1,122 @@
+.fr-shell {
+  min-height: 100vh;
+  box-sizing: border-box;
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 32px var(--l-sp-10);
+  display: flex;
+  flex-direction: column;
+  gap: var(--l-sp-8);
+  color: var(--l-text);
+  font-family: var(--l-ui);
+  font-size: var(--l-fs);
+}
+.fr-step {
+  margin: 0;
+  color: var(--l-muted);
+  font-size: var(--l-fs-meta);
+}
+.fr-field,
+.fr-btn {
+  min-height: var(--l-row);
+  padding: 0 var(--l-sp-8);
+  border: var(--l-border);
+  border-radius: var(--l-r);
+  background: var(--l-surface);
+  color: var(--l-text);
+  font: inherit;
+  cursor: pointer;
+}
+.fr-field {
+  display: block;
+  margin-top: var(--l-sp-3);
+  min-width: 220px;
+  font-family: var(--l-mono);
+}
+.fr-field[data-capturing="true"] {
+  border-color: var(--l-accent);
+}
+.fr-primary {
+  background: var(--l-accent);
+  color: var(--l-ink);
+  border-color: var(--l-accent);
+}
+.fr-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.fr-field:focus-visible,
+.fr-btn:focus-visible {
+  outline: 2px solid var(--l-focus);
+  outline-offset: 2px;
+}
+.fr-status {
+  margin: var(--l-sp-4) 0 0;
+  min-height: 1.35em;
+  font-size: var(--l-fs-sub);
+}
+.fr-status[data-kind="ok"] {
+  color: var(--l-ok-text);
+}
+.fr-status[data-kind="error"] {
+  color: var(--l-err);
+}
+.fr-servers {
+  list-style: none;
+  margin: 0 0 var(--l-sp-6);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--l-sp-4);
+}
+.fr-server {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--l-sp-6);
+  padding: var(--l-sp-4) var(--l-sp-6);
+  border: var(--l-border);
+  border-radius: var(--l-r);
+  background: var(--l-surface);
+}
+.fr-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--l-sp-4);
+}
+@media (prefers-reduced-motion: reduce) {
+  .fr-field,
+  .fr-btn {
+    transition: none;
+  }
+}
+
+.fr-welcome {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: var(--l-sp-6);
+}
+.fr-chips {
+  display: flex;
+  gap: var(--l-sp-4);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.fr-chip {
+  padding: var(--l-sp-2) var(--l-sp-6);
+  border: var(--l-border);
+  border-radius: var(--l-r);
+  background: var(--l-surface);
+  animation: fr-rise var(--l-dur-slow) var(--l-ease-out) backwards;
+  animation-delay: calc(var(--i) * var(--l-dur-slow));
+}
+.fr-rise {
+  animation: fr-rise var(--l-dur-slow) var(--l-ease-out) backwards;
+}
+@keyframes fr-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}

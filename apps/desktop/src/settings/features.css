@@ -1,0 +1,48 @@
+.f-group {
+  margin: var(--l-sp-6) 0 var(--l-sp-3);
+  color: var(--l-muted);
+  font-family: var(--l-mono);
+  font-size: var(--l-fs-group);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.f-grow {
+  flex: 1;
+}
+.f-tile {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: var(--l-tile-settings);
+  height: var(--l-tile-settings);
+  border-radius: var(--l-r);
+  background: var(--l-sel);
+  color: var(--l-accent-text);
+  font-weight: 600;
+}
+.f-pill {
+  padding: 1px 7px;
+  border: var(--l-border);
+  border-radius: var(--l-r-pill);
+  color: var(--l-muted);
+  font-family: var(--l-mono);
+  font-size: var(--l-fs-group);
+  font-weight: 500;
+}
+.f-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--l-sp-6);
+  padding: var(--l-sp-6) 0 var(--l-sp-6) calc(var(--l-row) + var(--l-sp-8));
+  border-bottom: var(--l-border);
+}
+.f-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--l-sp-2);
+}
+.f-form input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--l-focus);
+  outline-offset: 2px;
+}

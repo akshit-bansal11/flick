@@ -1,0 +1,28 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Launcher window: listen to events and launcher commands only",
+  "windows": ["launcher"],
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "allow-report-shown",
+    "allow-hide-launcher",
+    "allow-resize-launcher",
+    "allow-open-settings",
+    "allow-search",
+    "allow-launch",
+    "allow-reveal",
+    "allow-copy-path",
+    "allow-copy-text",
+    "allow-open-link",
+    "allow-run-system-command",
+    "allow-ask-stream",
+    "allow-cancel-ask",
+    "allow-list-thinking-modes",
+    "allow-set-thinking-mode",
+    "allow-get-first-run",
+    "allow-complete-first-run",
+    "allow-probe-providers"
+  ]
+}
