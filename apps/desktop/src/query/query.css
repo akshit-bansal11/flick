@@ -1,73 +1,70 @@
-.query,
 .query-empty {
   display: flex;
   flex-direction: column;
-  gap: var(--l-sp-5);
-  padding: var(--l-sp-7) var(--l-sp-8) var(--l-sp-8);
-  border-top: var(--l-border);
+  align-items: center;
+  gap: var(--l-sp-4);
+  padding: var(--l-sp-10) var(--l-sp-10) var(--l-sp-9);
+  border-top: 1px solid var(--l-line);
+  text-align: center;
 }
 
-.query-q {
+.right .query-q {
+  margin-bottom: var(--l-sp-5);
+  font-size: var(--l-fs-body);
+  line-height: var(--l-lh-body);
   font-weight: 600;
 }
 
-.query-chips {
-  display: flex;
-  gap: var(--l-sp-4);
-  align-items: center;
-}
-
-.query-chip,
-.query-pill {
-  font: 500 var(--l-fs-meta) var(--l-mono);
-  border-radius: var(--l-r-pill);
-  padding: var(--l-sp-1) var(--l-sp-5);
-}
-
-.query-chip {
-  animation: chip-swap var(--l-dur) var(--l-ease-out);
-  background: var(--l-accent);
-  color: var(--l-ink);
-}
-
-.query-pill {
-  transition:
-    background var(--l-dur-fast) var(--l-ease-out),
-    color var(--l-dur-fast) var(--l-ease-out),
-    transform var(--l-dur-fast) var(--l-ease-out);
-  background: none;
-  border: var(--l-border);
+/* Persistent AI disclosure: stays above the answer while it is on screen. */
+.ai-mark {
+  margin: 0 0 var(--l-sp-5);
+  font-size: var(--l-fs-caption);
+  line-height: var(--l-lh-caption);
   color: var(--l-muted);
-  cursor: pointer;
 }
 
-.query-pill.on {
-  background: var(--l-accent);
-  border-color: var(--l-accent);
-  color: var(--l-ink);
+.left .dot {
+  flex: none;
+  width: var(--l-sp-4);
+  height: var(--l-sp-4);
+  border-radius: var(--l-r-pill);
+  background: var(--l-ok);
 }
 
-.query-pill:active,
+.effort {
+  width: 100%;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+
+.effort:hover {
+  background: var(--l-hover);
+}
+
+.effort:focus-visible,
+.query-btn:focus-visible {
+  outline: 2px solid var(--l-focus);
+  outline-offset: -2px;
+}
+
 .query-btn:active {
   transform: scale(0.98);
 }
 
-@keyframes chip-swap {
-  from {
-    opacity: 0;
-  }
-}
-
-/* Soft blinking caret after the streamed text; the text itself is never animated. */
+/* Rounded accent caret after the streamed text; the text itself is never animated. */
 [data-answer][aria-busy="true"] > :last-child::after {
   content: "";
   display: inline-block;
-  width: 2px;
-  height: 1em;
-  margin-left: 2px;
+  width: var(--l-sp-4);
+  height: var(--l-sp-8);
+  margin-left: var(--l-sp-1);
   vertical-align: text-bottom;
+  border-radius: var(--l-r-key);
   background: var(--l-accent);
-  animation: caret var(--l-dur-caret) var(--l-ease-in-out) infinite;
+  animation: caret var(--l-dur-caret) var(--l-ease-out) infinite;
 }
 
 @keyframes caret {
@@ -77,36 +74,44 @@
 }
 
 .query-thinking {
-  font: 500 var(--l-fs-meta) var(--l-mono);
+  font: 500 var(--l-fs-caption) var(--l-mono);
   color: var(--l-muted);
 }
 
 [data-answer] {
+  font-family: var(--l-prose);
   white-space: pre-wrap;
+  font-size: var(--l-fs-body);
   line-height: var(--l-lh-answer);
 }
 
 .query-error {
+  font-size: var(--l-fs-body);
+  line-height: var(--l-lh-body);
   color: var(--l-err);
 }
 
 .query-empty-title {
+  font-size: var(--l-fs-title);
+  line-height: var(--l-lh-title);
   font-weight: 600;
 }
 
 .query-empty-body {
-  font-size: var(--l-fs-toast);
+  max-width: 380px;
+  font-size: var(--l-fs-body);
+  line-height: var(--l-lh-body);
   color: var(--l-muted);
 }
 
 .query-btn {
-  align-self: flex-start;
-  font: 500 var(--l-fs-action) var(--l-ui);
+  margin-top: var(--l-sp-4);
+  font: 500 var(--l-fs-body) var(--l-ui);
   background: var(--l-accent);
-  color: var(--l-ink);
+  color: var(--l-on-accent);
   border: 0;
-  border-radius: var(--l-r2);
-  padding: var(--l-sp-3) var(--l-sp-6);
+  border-radius: var(--l-r-control);
+  padding: var(--l-sp-3) var(--l-sp-8);
   cursor: pointer;
   transition: transform var(--l-dur-fast) var(--l-ease-out);
 }

@@ -105,12 +105,16 @@ impl State {
                 "" => key.clone(),
                 t => t.to_owned(),
             };
+            // Store the scheme lowercased so `execute`, which accepts only lowercase http(s),
+            // opens an `HTTPS://` template too. The scheme is ASCII, so the split is on a char edge.
+            let scheme_end = lower.find("://").unwrap_or(0);
+            let url = format!("{}{}", &lower[..scheme_end], &url[scheme_end..]);
             st.by_keyword.insert(key.clone(), st.list.len());
             st.list.push(Shortcut {
                 keyword: key,
                 title,
-                url: url.to_owned(),
-                host: host_of(url),
+                host: host_of(&url),
+                url,
             });
         }
         Ok(st)
@@ -148,6 +152,23 @@ impl State {
             })
             .collect();
         Self::from_rows(&rows)
+    }
+
+    fn fallback_item(&self, text: &str) -> Option<Item> {
+        let text = text.trim();
+        let first = self.list.first()?;
+        if text.is_empty() {
+            return None;
+        }
+        let input = Input {
+            raw: String::new(),
+            text: format!("{} {text}", first.keyword),
+            mode: Mode::Command,
+            seq: 0,
+        };
+        let mut item = self.query(&input).into_iter().next()?;
+        item.id = ItemId("web:fallback".into());
+        Some(item)
     }
 
     fn query(&self, input: &Input) -> Vec<Item> {
@@ -232,6 +253,18 @@ fn current() -> Arc<State> {
         .unwrap_or_else(|| Arc::new(State::defaults()))
 }
 
+/// Title of the first shortcut, used for the plain-text "Search <title>" row. `None` when there are
+/// no shortcuts.
+pub fn fallback_title() -> Option<String> {
+    current().list.first().map(|s| s.title.clone())
+}
+
+/// The item `query` builds for `<first keyword> <text>`, with id `web:fallback`. `None` for blank
+/// text or no shortcuts. Builds the item only; opening goes through `Web::execute`.
+pub fn fallback_item(text: &str) -> Option<Item> {
+    current().fallback_item(text)
+}
+
 #[async_trait]
 impl Feature for Web {
     fn id(&self) -> &'static str {
@@ -277,10 +310,14 @@ impl Feature for Web {
             .filter(|u| u.starts_with("http://") || u.starts_with("https://"))
             .ok_or_else(|| FeatureError::Other("item has no URL".into()))?
             .to_owned();
-        tokio::task::spawn_blocking(move || index_apps::launch::open_path(Path::new(&url)))
-            .await
-            .map_err(|e| FeatureError::Other(format!("open task failed: {e}")))?
-            .map_err(|e| FeatureError::Other(format!("could not open URL: {e}")))?;
+        // The error never carries the URL: it holds the user's search text.
+        tokio::task::spawn_blocking(move || {
+            let _com = index_apps::com::ComGuard::new().map_err(|_| "COM init")?;
+            index_apps::launch::open_path(Path::new(&url)).map_err(|_| "shell open")
+        })
+        .await
+        .map_err(|e| FeatureError::Other(format!("open task failed: {e}")))?
+        .map_err(|kind| FeatureError::Other(format!("Could not open that link ({kind})")))?;
         Ok(Outcome::HideLauncher)
     }
 }
@@ -300,6 +337,40 @@ mod tests {
 
     fn url(items: &[Item]) -> &str {
         items[0].payload["url"].as_str().unwrap_or("")
+    }
+
+    #[test]
+    fn fallback_item_encodes_and_skips_blank() {
+        let st = State::defaults();
+        let Some(it) = st.fallback_item(" a b&c ") else {
+            panic!("expected a fallback item");
+        };
+        assert_eq!(it.id.0, "web:fallback");
+        assert_eq!(it.source, "web");
+        assert_eq!(it.actions, vec![ActionKind::Primary]);
+        assert_eq!(
+            it.payload["url"],
+            "https://www.google.com/search?q=a%20b%26c"
+        );
+        assert!(st.fallback_item("   ").is_none());
+        assert!(State::default().fallback_item("x").is_none());
+    }
+
+    #[test]
+    fn fallback_title_is_first_shortcut() {
+        // `fallback_title()` reads the process-wide state other tests change, so test the same lookup on
+        // owned states.
+        assert_eq!(
+            State::defaults().list.first().map(|s| s.title.as_str()),
+            Some("Google")
+        );
+        let custom = vec![(
+            "ddg".to_owned(),
+            "DuckDuckGo".to_owned(),
+            "https://duckduckgo.com/?q={q}".to_owned(),
+        )];
+        let st = State::from_rows(&custom).unwrap_or_default();
+        assert_eq!(st.list[0].title, "DuckDuckGo");
     }
 
     #[test]
@@ -353,6 +424,16 @@ mod tests {
         let items = st.query(&input("dd rust"));
         assert_eq!(url(&items), "https://duckduckgo.com/?q=rust");
         assert!(st.query(&input("g rust")).is_empty());
+    }
+
+    #[test]
+    fn uppercase_scheme_is_stored_lowercase() {
+        let t: toml::Table = r#"shortcuts = [{ keyword = "d", url = "HTTPS://Duck.com/?Q={q}" }]"#
+            .parse()
+            .unwrap();
+        let st = State::from_options(&t).unwrap();
+        // Lowercase scheme, so `execute` accepts it; the rest of the template is untouched.
+        assert_eq!(url(&st.query(&input("d x"))), "https://Duck.com/?Q=x");
     }
 
     #[test]

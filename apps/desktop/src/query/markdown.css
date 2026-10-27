@@ -1,5 +1,6 @@
 .md {
-  font-size: var(--l-fs);
+  font-family: var(--l-prose);
+  font-size: var(--l-fs-body);
   line-height: var(--l-lh-answer);
   color: var(--l-text);
   overflow-wrap: anywhere;
@@ -21,16 +22,14 @@
 .md h2,
 .md h3 {
   margin: 0.8em 0 0.4em;
-  line-height: var(--l-lh);
+  line-height: var(--l-lh-title);
 }
-.md h1 {
+.md h1,
+.md h2 {
   font-size: var(--l-fs-title);
 }
-.md h2 {
-  font-size: calc(var(--l-fs-title) * 0.85);
-}
 .md h3 {
-  font-size: var(--l-fs);
+  font-size: var(--l-fs-body);
 }
 .md ul,
 .md ol {
@@ -38,8 +37,8 @@
 }
 .md blockquote {
   padding-left: 0.8em;
-  border-left: 3px solid var(--l-line);
-  color: var(--l-muted-strong);
+  border-left: 2px solid var(--l-line);
+  color: var(--l-muted);
 }
 .md hr {
   border: 0;
@@ -49,17 +48,17 @@
 .md-code,
 .md-pre {
   font-family: var(--l-mono);
-  font-size: var(--l-fs-sub);
+  font-size: var(--l-fs-caption);
 }
 .md-code {
   background: var(--l-surface);
-  border-radius: var(--l-r-tile);
+  border-radius: var(--l-r-key);
   padding: 0.1em 0.35em;
 }
 .md-pre {
   background: var(--l-surface);
-  border: var(--l-border);
-  border-radius: var(--l-r);
+  border: 1px solid var(--l-line);
+  border-radius: var(--l-r-control);
   padding: 0.7em 0.9em;
   overflow-x: auto;
 }
@@ -69,8 +68,8 @@
 }
 .md-lang {
   display: block;
-  font-size: var(--l-fs-meta);
-  color: var(--l-muted-strong);
+  font-size: var(--l-fs-micro);
+  color: var(--l-muted);
   margin-bottom: 0.3em;
 }
 .md-link {
@@ -81,5 +80,5 @@
 }
 .md-link:focus-visible {
   outline: 2px solid var(--l-focus);
-  border-radius: var(--l-r-tile);
+  border-radius: var(--l-r-key);
 }

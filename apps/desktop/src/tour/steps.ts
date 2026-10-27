@@ -1,5 +1,4 @@
 import { caps, capsOf, capsText, chordOf, fromEvent } from "../shortcuts";
-import type { ThemeId } from "../theme";
 import type { LaunchMode } from "../types";
 
 /** Things the user did in the demo that a step can wait for. */
@@ -7,6 +6,8 @@ export type TourEvent =
   | "hotkey"
   | "launchApp"
   | "openFile"
+  | "runCommand"
+  | "openProject"
   | "copied"
   | "askSent"
   | "modelSwitched"
@@ -55,31 +56,49 @@ export const TOUR_STEPS: readonly TourStep[] = [
     goal: (v) => saw(v, "hotkey"),
   },
   {
-    id: "apps",
-    title: "! Apps and programs",
-    body: `Type ! and a name, arrow to a row, then press ${key("open")} to open it.`,
-    keys: ["!", ...caps("open")],
-    example: "! spotify",
+    id: "plain",
+    title: "Type anything",
+    body: "Type without a prefix to search apps and commands. An empty bar lists your recent picks. The last rows search files, the web or ask.",
+    keys: [],
+    example: "spo",
     show: "type",
     goal: (v) => saw(v, "launchApp"),
   },
   {
-    id: "commands",
-    title: "> Commands",
-    body: `Math, units, currency, time zones and system commands. Type 5 km to mi, then press ${key("copyResult")} to copy the answer.`,
-    keys: [">", ...caps("copyResult")],
-    example: "> 5 km to mi",
+    id: "find",
+    title: "/ Open apps and files",
+    body: `Find apps, programs, files and folders. ${key("open")} opens one, ${key("location")} shows it in Explorer.`,
+    keys: ["/", ...caps("open"), ...caps("location")],
+    example: "/ spotify",
     show: "type",
-    goal: (v) => v.mode === "commands" && saw(v, "copied"),
+    goal: (v) => saw(v, "launchApp") || saw(v, "openFile"),
   },
   {
-    id: "find",
-    title: "/ Find",
-    body: `Search files and folders. ${key("open")} opens one, ${key("location")} shows it in Explorer.`,
-    keys: ["/", ...caps("open"), ...caps("location")],
-    example: "/ report",
+    id: "commands",
+    title: "> Commands",
+    body: `Lock the PC, end a process, free a port. Type lock, then press ${key("open")} to run it.`,
+    keys: [">", ...caps("open")],
+    example: "> lock",
     show: "type",
-    goal: (v) => saw(v, "openFile"),
+    goal: (v) => saw(v, "runCommand"),
+  },
+  {
+    id: "calc",
+    title: "= Calc",
+    body: `Math, units, currency and time zones. Type 5 km to mi, then press ${key("copyResult")} to copy the answer.`,
+    keys: ["=", ...caps("copyResult")],
+    example: "= 5 km to mi",
+    show: "type",
+    goal: (v) => v.mode === "calc" && saw(v, "copied"),
+  },
+  {
+    id: "projects",
+    title: "@ Projects",
+    body: `Jump into a code project. Type a name, then press ${key("open")} to open it.`,
+    keys: ["@", ...caps("open")],
+    example: "@ flick",
+    show: "type",
+    goal: (v) => saw(v, "openProject"),
   },
   {
     id: "ask",
@@ -102,16 +121,16 @@ export const TOUR_STEPS: readonly TourStep[] = [
   {
     id: "around",
     title: "Getting around",
-    body: `${key("leave")} on an empty bar leaves a mode. Then ${key("go:find")} jumps to Find. ${key("sheet")} lists every shortcut and ${key("back")} steps back: close, clear, hide.`,
+    body: `${key("leave")} on an empty bar leaves a mode. ${key("tabNext")} and ${key("tabPrev")} switch mode tabs. Then ${key("go:find")} jumps to Open. ${key("sheet")} lists every shortcut and ${key("back")} steps back: close, clear, hide.`,
     keys: [...caps("leave"), ...caps("go:find"), ...caps("sheet")],
-    example: "!",
+    example: ">",
     show: "type",
     goal: (v) => saw(v, "left") && v.mode === "find",
   },
   {
     id: "themes",
     title: "Themes",
-    body: "Pick a theme and the bar restyles on the spot. Settings > Appearance has the same choices and more.",
+    body: "Pick a theme and the bar restyles on the spot. In the bar, > theme opens the same quick pick. Settings > Appearance has more.",
     keys: [],
     show: "theme",
     goal: (v) => saw(v, "theme"),
@@ -120,7 +139,7 @@ export const TOUR_STEPS: readonly TourStep[] = [
     id: "done",
     title: "You are set",
     body: "Press the hotkey any time and pick a prefix. Find this tour again in Settings > General.",
-    keys: [">", "!", "/", "?"],
+    keys: ["/", ">", "=", "?", "@"],
   },
 ];
 
@@ -147,9 +166,10 @@ export const GHOST_MS = 45;
 /**
  * What the demo's `text` event carries when the ghost has typed `typed` of an example:
  * the prefix alone first (it picks the mode), then only the text after the prefix.
+ * An example with no prefix is typed as it is.
  */
 export const ghostInput = (typed: string): string =>
-  typed.length <= 1 ? typed : typed.slice(1).trimStart();
+  /^[/>=?@]/.test(typed) && typed.length > 1 ? typed.slice(1).trimStart() : typed;
 
 const ACCEL_NAMES: Record<string, string> = {
   control: "Ctrl",
@@ -191,12 +211,12 @@ export function isAccelerator(accel: string, e: Parameters<typeof fromEvent>[0])
   return want !== null && chordOf(fromEvent(e)) === want;
 }
 
-/** Theme choices offered by the Themes step. */
-export const TOUR_THEMES: readonly ThemeId[] = [
-  "glass",
+/** Registry ids of the theme choices offered by the Themes step, in display order. */
+export const TOUR_THEMES: readonly string[] = [
+  "flick-default",
+  "flick-default-light",
   "frost",
   "midnight",
   "aurora",
   "ember",
-  "solid",
 ];

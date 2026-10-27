@@ -54,6 +54,9 @@ fn launcher_lacks_settings_commands() {
         "delete-secret",
         "list-secrets",
         "set-provider",
+        "preview-vscode-theme",
+        "save-imported-theme",
+        "delete-imported-theme",
     ] {
         assert!(!p.contains(&format!("allow-{c}")), "launcher has {c}");
     }
@@ -62,7 +65,25 @@ fn launcher_lacks_settings_commands() {
 #[test]
 fn settings_lacks_launcher_commands() {
     let p = perms("settings");
-    for c in ["launch", "search", "ask-stream"] {
+    for c in [
+        "launch",
+        "search",
+        "ask-stream",
+        "web-search",
+        "tray-action",
+        "home-items",
+        "toggle-pin",
+    ] {
         assert!(!p.contains(&format!("allow-{c}")), "settings has {c}");
+    }
+}
+
+#[test]
+fn launcher_and_settings_both_set_appearance() {
+    for name in ["default", "settings"] {
+        assert!(
+            perms(name).contains(&"allow-set-appearance".to_owned()),
+            "{name} lacks set-appearance"
+        );
     }
 }

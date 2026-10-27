@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  capsOf,
+  capsText,
   chordOf,
   groups,
   idFor,
   inScope,
   isReserved,
+  keyWords,
   matches,
   parseChord,
   RESERVED,
@@ -51,6 +54,30 @@ describe("shortcut table", () => {
     expect(isReserved("Ctrl+Tab", "settings")).toBe(false);
   });
 
+  it("lets the launcher own Ctrl+Tab and Ctrl+Shift+Tab, and nothing else reserved", () => {
+    expect(isReserved("Ctrl+Tab", "launcher")).toBe(false);
+    expect(isReserved("Ctrl+Shift+Tab", "launcher")).toBe(false);
+    expect(isReserved("Ctrl+Tab")).toBe(true);
+    expect(isReserved("Ctrl+Shift+Tab")).toBe(true);
+    expect(isReserved("Ctrl+W", "launcher")).toBe(true);
+    expect(isReserved("Ctrl+W", "settings")).toBe(false);
+    expect(isReserved("Ctrl+Tab", "settings")).toBe(false);
+    expect(isReserved("Ctrl+Shift+Tab", "settings")).toBe(false);
+  });
+
+  it("pin is Ctrl+P in home and Open lists, claimed by nothing else", () => {
+    const pin = SHORTCUTS.find((s) => s.id === "pin");
+    expect(pin).toMatchObject({ keys: "Ctrl+P", scope: ["none", "find"] });
+    expect(pin).toMatchObject({ when: "pinnable", foot: "pin" });
+    expect(SHORTCUTS.filter((s) => s.keys === "Ctrl+P")).toHaveLength(1);
+    expect(isReserved("Ctrl+P", "none")).toBe(false);
+    expect(isReserved("Ctrl+P", "find")).toBe(false);
+    expect(isReserved("Ctrl+P", "launcher")).toBe(true);
+    expect(isReserved("Ctrl+P", "settings")).toBe(true);
+    expect(isReserved("Ctrl+P")).toBe(true);
+    expect(idFor("find", key("p", { ctrl: true }))).toBe("pin");
+  });
+
   it("reads Ctrl+digit and Ctrl+/ from the physical key (AZERTY)", () => {
     expect(chordOf(key("&", { ctrl: true, code: "Digit1" }))).toBe("Ctrl+1");
     expect(chordOf(key(":", { ctrl: true, code: "Slash" }))).toBe("Ctrl+/");
@@ -64,12 +91,31 @@ describe("shortcut table", () => {
     expect(RESERVED).toContain("Ctrl+Alt+Delete");
   });
 
+  it("Show location applies to Open and plain-text results", () => {
+    expect(SHORTCUTS.find((s) => s.id === "location")?.scope).toEqual(["none", "find"]);
+  });
+
+  it("Use theme for its variant only is Ctrl+Enter in Commands, where Show location is not", () => {
+    const slot = SHORTCUTS.find((s) => s.id === "themeSlot");
+    expect(slot?.keys).toBe("Ctrl+Enter");
+    expect(slot?.scope).toBe("commands");
+    const chord = key("Enter", { ctrl: true });
+    expect(idFor("commands", chord)).toBe("themeSlot");
+    expect(idFor("find", chord)).toBe("location");
+  });
+
+  it("plain-text scope shares no chord with the launcher scope", () => {
+    const own = inScope("none").map((s) => s.keys);
+    const shared = inScope("launcher").map((s) => s.keys);
+    expect(own.filter((c) => shared.includes(c))).toEqual([]);
+  });
+
   it("has unique ids", () => {
     expect(new Set(SHORTCUTS.map((s) => s.id)).size).toBe(SHORTCUTS.length);
   });
 
   it("shares no chord inside one effective scope", () => {
-    const modes: Scope[] = ["none", "commands", "run", "find", "query"];
+    const modes: Scope[] = ["none", "find", "commands", "calc", "query", "projects"];
     const effective = [...modes.map((m): Scope[] => [m, "launcher"]), ["settings"] as Scope[]];
     for (const scopes of effective) {
       const chords = scopes.flatMap((s) => inScope(s).map((x) => x.keys));
@@ -100,10 +146,56 @@ describe("chordOf and matches", () => {
   it("looks up by mode, mode entries first", () => {
     expect(idFor("find", key("Enter"))).toBe("open");
     expect(idFor("query", key("Enter"))).toBe("ask");
-    expect(idFor("none", key("Enter"))).toBe("enterMode");
-    expect(idFor("commands", key("1", { ctrl: true }))).toBe("go:commands");
+    expect(idFor("none", key("Enter"))).toBe("open");
+    expect(idFor("commands", key("1", { ctrl: true }))).toBe("go:find");
     expect(idFor("settings", key("w", { ctrl: true }))).toBe("closeSettingsW");
     expect(idFor("find", key("Backspace", { ctrl: true }))).toBeUndefined();
+  });
+});
+
+describe("mode tab cycling", () => {
+  it("maps Ctrl+Tab and Ctrl+Shift+Tab to tabNext and tabPrev in every launcher mode", () => {
+    for (const mode of ["none", "find", "commands", "calc", "query", "projects"] as const) {
+      expect(idFor(mode, key("Tab", { ctrl: true })), mode).toBe("tabNext");
+      expect(idFor(mode, key("Tab", { ctrl: true, shift: true })), mode).toBe("tabPrev");
+    }
+  });
+
+  it("keeps Tab alone on the model shortcut in the query scope", () => {
+    expect(idFor("query", key("Tab"))).toBe("model");
+    expect(idFor("query", key("Tab", { shift: true }))).toBe("modelPrev");
+  });
+
+  it("keeps Settings page cycling on the same chords", () => {
+    expect(idFor("settings", key("Tab", { ctrl: true }))).toBe("pageNext");
+    expect(idFor("settings", key("Tab", { ctrl: true, shift: true }))).toBe("pagePrev");
+  });
+});
+
+describe("keyWords and capsOf", () => {
+  it("writes chords as lower-case words", () => {
+    expect(keyWords("Ctrl+Shift+Enter")).toBe("ctrl+shift+enter");
+    expect(keyWords("Shift+Tab")).toBe("shift+tab");
+    expect(keyWords("Alt+Space")).toBe("alt+space");
+    expect(keyWords("Esc")).toBe("esc");
+    expect(keyWords("F1")).toBe("f1");
+    expect(keyWords("Ctrl+,")).toBe("ctrl+,");
+  });
+
+  it("keeps key names in their own case for aria-keyshortcuts, as words not glyphs", () => {
+    expect(capsOf("Enter")).toEqual(["Enter"]);
+    expect(capsOf("Backspace")).toEqual(["Backspace"]);
+    expect(capsOf("Up")).toEqual(["Up"]);
+    expect(capsOf("Down")).toEqual(["Down"]);
+    expect(capsOf("Ctrl+Shift+Enter")).toEqual(["Ctrl", "Shift", "Enter"]);
+  });
+
+  it("capsText reads a shortcut as lower-case words", () => {
+    expect(capsText("copyPath")).toBe("ctrl shift c");
+  });
+
+  it("joins caps into the same words as the chord", () => {
+    expect(keyWords(capsOf("Ctrl+Backspace").join("+"))).toBe("ctrl+backspace");
   });
 });
 

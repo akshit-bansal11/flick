@@ -30,13 +30,29 @@ describe("ghostType", () => {
 
 describe("demoSearch", () => {
   it("filters apps, files and gives canned command results", () => {
-    expect(demoSearch("command", "apps", "spot").map((i) => i.title)).toEqual(["Spotify"]);
-    expect(demoSearch("command", "apps", "notepad").length).toBe(2);
-    expect(demoSearch("find", undefined, "report").length).toBeGreaterThan(0);
-    const math = demoSearch("command", "commands", "5 km to mi")[0];
+    expect(demoSearch("command", ["apps"], "spot").map((i) => i.title)).toEqual(["Spotify"]);
+    expect(demoSearch("command", ["apps"], "notepad").length).toBe(2);
+    expect(demoSearch("find", ["files"], "report").length).toBeGreaterThan(0);
+    const math = demoSearch("command", ["math"], "5 km to mi")[0];
     expect(math?.actions).toEqual([{ type: "copyResult" }]);
-    expect(demoSearch("command", "commands", "lock")[0]?.id).toBe("cmd:lock");
-    expect(demoSearch("query", undefined, "x")).toEqual([]);
+    expect(demoSearch("command", ["syscmd"], "lock")[0]?.id).toBe("cmd:lock");
+    expect(demoSearch("query", [], "x")).toEqual([]);
+  });
+  it("plain text searches apps and features but never files", () => {
+    const plain = ["apps", "features"];
+    expect(demoSearch("command", plain, "spot").map((i) => i.title)).toEqual(["Spotify"]);
+    expect(demoSearch("command", plain, "2 + 2")[0]?.id).toBe("result:4");
+    expect(demoSearch("command", plain, "lock")[0]?.id).toBe("cmd:lock");
+    expect(demoSearch("command", plain, "report")).toEqual([]);
+  });
+  it("lists apps, programs, files, folders and projects in order", () => {
+    const ids = demoSearch("find", ["apps", "files"], "").map((i) => i.id);
+    expect(ids.indexOf("prog:notepadpp")).toBeGreaterThan(ids.indexOf("app:notepad"));
+    expect(ids.indexOf("file:reports")).toBeGreaterThan(ids.indexOf("file:budget"));
+    expect(demoSearch("command", ["projects"], "").map((i) => i.title)).toEqual([
+      "flick",
+      "notes-app",
+    ]);
   });
 });
 
@@ -53,7 +69,7 @@ describe("demo runner", () => {
 
   it("answers a search with demo items", () => {
     const { dispatched, runner } = setup();
-    runner.run({ type: "search", seq: 3, mode: "find", text: "report" });
+    runner.run({ type: "search", seq: 3, mode: "find", text: "report", sources: ["files"] });
     vi.advanceTimersByTime(1);
     expect(dispatched[0]).toMatchObject({ type: "results", seq: 3 });
   });
@@ -68,6 +84,11 @@ describe("demo runner", () => {
       "Would show it in Explorer",
       "In the real launcher Esc hides it",
     ]);
+  });
+  it("shows a toast for a web search", () => {
+    const { toasts, runner } = setup();
+    runner.run({ type: "webSearch", text: "cats" });
+    expect(toasts).toEqual(["Would search the web"]);
   });
   it("streams the canned answer and stops on cancel", () => {
     const { dispatched, runner } = setup();
@@ -98,6 +119,8 @@ describe("tourEventOf", () => {
     const ev = (e: Effect) => tourEventOf(e);
     expect(ev({ type: "launch", itemId: "app:chrome", admin: false })).toBe("launchApp");
     expect(ev({ type: "launch", itemId: "file:report", admin: false })).toBe("openFile");
+    expect(ev({ type: "launch", itemId: "cmd:lock", admin: false })).toBe("runCommand");
+    expect(ev({ type: "launch", itemId: "projects:flick", admin: false })).toBe("openProject");
     expect(ev({ type: "reveal", itemId: "file:report" })).toBe("openFile");
     expect(ev({ type: "copyText", text: "1" })).toBe("copied");
     expect(ev({ type: "setThinkingMode", id: "x" })).toBe("modelSwitched");

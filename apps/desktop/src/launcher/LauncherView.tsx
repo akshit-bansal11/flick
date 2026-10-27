@@ -3,12 +3,15 @@ import { Attachment } from "../query/Attachment";
 import type { LaunchMode } from "../types";
 import "../query/attachment.css";
 import { QueryView } from "../query/QueryView";
-import { Actions } from "./Actions";
-import { Footer } from "./Footer";
+import { DetailPane } from "./DetailPane";
 import { InputBar } from "./InputBar";
-import { HINTS_ID, hintId, LISTBOX_ID, optionId, PrefixHints, Results } from "./Results";
+import { isPinnable, themeRow } from "./kinds";
+import { ModeTabs } from "./ModeTabs";
+import { LISTBOX_ID, optionId, Results } from "./Results";
 import { availableModes, DEFAULT_QUESTION, type State } from "./reducer";
 import { ShortcutSheet } from "./ShortcutSheet";
+import { StatusLine } from "./StatusLine";
+import { countsOf, statusHints } from "./status";
 
 /** What the launcher panel needs: a reducer state and the callbacks that feed events back. */
 export interface LauncherViewProps {
@@ -16,7 +19,7 @@ export interface LauncherViewProps {
   inputRef: RefObject<HTMLInputElement | null>;
   panelRef?: Ref<HTMLDivElement>;
   removeAttachment: () => void;
-  enterMode: (mode: LaunchMode) => void;
+  selectTab: (mode: LaunchMode) => void;
   setText: (text: string) => void;
   activate: (index: number, mods?: { ctrl?: boolean; shift?: boolean }) => void;
   press: (chord: string) => void;
@@ -31,7 +34,7 @@ export function LauncherView({
   inputRef,
   panelRef,
   removeAttachment,
-  enterMode,
+  selectTab,
   setText,
   activate,
   press,
@@ -41,22 +44,41 @@ export function LauncherView({
 }: LauncherViewProps) {
   const q = state.query;
   const noProvider = q.errorCode === "no_provider";
-  const none = state.mode === "none";
   const selected = state.items[state.selected];
-  const hints = availableModes(state.enabledModes);
-  const hasList = none ? hints.length > 0 : state.items.length > 0;
-  const activeId = !hasList ? undefined : none ? hintId(state.selected) : optionId(state.selected);
+  const pathItem = selected?.id.startsWith("file:") ?? false;
+  const revealable = selected?.actions.some((a) => a.type === "location") ?? false;
+  const ctx = {
+    pathItem,
+    revealable,
+    armedProcess: state.armed && selected?.kind === "process",
+    adminAction: selected?.actions.some((a) => a.type === "admin") ?? false,
+    copyValue: selected?.actions.some((a) => a.type === "copyResult") ?? false,
+    attachment: state.attachment !== null,
+    answer: q.text !== "",
+    pinnable: selected ? isPinnable(selected) : false,
+    pinned: selected ? state.pins.includes(selected.id) : false,
+  };
+  const counts = state.mode === "query" ? [] : countsOf(state.items);
+  const pick = themeRow(selected);
+  const base = statusHints(state.mode, ctx, counts);
+  const status =
+    pick && state.theme.painted !== state.theme.activeId
+      ? { ...base, text: `previewing ${pick.theme.name}` }
+      : base;
+  const hints = availableModes(state.enabledSources);
+  const activeId = state.items.length > 0 ? optionId(state.selected) : undefined;
 
   return (
     <div ref={panelRef} className={state.visible ? "launcher show" : "launcher"}>
       <InputBar
         mode={state.mode}
         value={state.input}
-        listId={none ? HINTS_ID : LISTBOX_ID}
+        listId={LISTBOX_ID}
         activeId={activeId}
         onChange={setText}
         inputRef={inputRef}
       />
+      <ModeTabs modes={hints} mode={state.mode} onSelect={selectTab} />
       {state.mode !== "query" && state.notice && (
         <p role="alert" className="launch-error">
           {state.notice}
@@ -73,6 +95,7 @@ export function LauncherView({
           <QueryView
             question={q.status === "idle" ? "" : state.input || DEFAULT_QUESTION}
             provider={q.provider}
+            model={q.model}
             effort={q.effort}
             text={q.text}
             error={noProvider ? null : q.error}
@@ -86,37 +109,18 @@ export function LauncherView({
             onOpenSettings={() => openSettings("providers")}
             onOpenLink={openLink}
           />
-        ) : none ? (
-          <PrefixHints
-            modes={hints}
-            selected={state.selected}
-            typed={state.input !== ""}
-            onEnter={enterMode}
-          />
         ) : (
           <Results
             items={state.items}
             selected={state.selected}
             query={state.input}
+            pending={state.pending}
             onActivate={activate}
+            detail={selected && <DetailPane item={selected} ctx={ctx} onPress={press} />}
           />
         )}
       </div>
-      {!state.sheet && state.mode === "find" && state.items.length > 0 && (
-        <Actions onPress={press} />
-      )}
-      <Footer
-        mode={state.mode}
-        copied={state.copied}
-        copyFailed={state.copyFailed}
-        ctx={{
-          armedProcess: state.armed && selected?.kind === "process",
-          adminAction: selected?.actions.some((a) => a.type === "admin") ?? false,
-          copyValue: selected?.actions.some((a) => a.type === "copyResult") ?? false,
-          attachment: state.attachment !== null,
-          answer: q.text !== "",
-        }}
-      />
+      <StatusLine status={status} copied={state.copied} copyFailed={state.copyFailed} />
     </div>
   );
 }

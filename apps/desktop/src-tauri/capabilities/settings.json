@@ -41,6 +41,10 @@
     "allow-complete-first-run",
     "allow-set-tutorial-done",
     "allow-get-about",
-    "allow-set-hotkeys-paused"
+    "allow-set-hotkeys-paused",
+    "allow-list-themes",
+    "allow-preview-vscode-theme",
+    "allow-save-imported-theme",
+    "allow-delete-imported-theme"
   ]
 }

@@ -12,7 +12,7 @@ const FEATURES: Feature[] = [
   {
     title: "Math and units",
     line: "Arithmetic, units, currency and time zones; Enter copies the result.",
-    example: "2.5 kg to lb",
+    example: "= 2.5 kg to lb",
     since: "v0.0.1",
   },
   {
@@ -30,8 +30,15 @@ const FEATURES: Feature[] = [
   {
     title: "Project launcher",
     line: "Open a project in your editor or terminal by name.",
-    example: "code flick",
+    example: "@ flick",
     since: "v0.0.1",
+  },
+  {
+    title: "Links and paths",
+    line: "Type a web address or a folder path and press Enter to open it.",
+    example: "github.com/flick",
+    since: "v0.0.1",
+    doc: "links-and-paths",
   },
   {
     title: "Natural-language finder",
@@ -70,8 +77,8 @@ const FEATURES: Feature[] = [
   },
   {
     title: "Programs on all drives",
-    line: "! also lists programs found on every fixed drive, below installed apps.",
-    example: "!setup",
+    line: "/ also lists programs found on every fixed drive, below installed apps.",
+    example: "/ setup",
     since: "v0.0.1",
     doc: "programs",
   },
@@ -84,10 +91,22 @@ const FEATURES: Feature[] = [
   },
   {
     title: "Themes",
-    line: "Glass, Frost, Midnight, Aurora, Ember or Solid, with adjustable glass strength.",
-    example: "Settings, Appearance",
+    line: "A flat, monospace look. Dozens of ported editor themes plus its own defaults, with separate dark and light picks.",
+    example: "> theme",
     since: "v0.0.1",
     doc: "appearance",
+  },
+  {
+    title: "Mode tabs",
+    line: "A tab strip above the results: all, or one tab per prefix. Ctrl Tab moves to the next mode.",
+    example: "ctrl tab",
+    since: "v0.0.1",
+  },
+  {
+    title: "Pins and recents",
+    line: "Pin the rows you reach for first; recent picks are one keystroke away.",
+    example: "ctrl p",
+    since: "v0.0.1",
   },
   {
     title: "Tutorial",
@@ -99,26 +118,32 @@ const FEATURES: Feature[] = [
 ];
 
 const MODES = [
+  { name: "Open", key: "/", line: "Apps, programs, files and folders." },
   {
     name: "Commands",
     key: ">",
-    line: "System commands, math, units, web shortcuts, ports, media, capture.",
+    line: "System commands, web shortcuts, media, ports and processes, quick capture, links.",
   },
-  { name: "Apps", key: "!", line: "Installed apps, plus programs found on every fixed drive." },
-  { name: "Find", key: "/", line: "Fuzzy search of files and folders on every fixed drive." },
-  { name: "Ask", key: "?", line: "Streams an answer from the provider and model you choose." },
+  { name: "Calc", key: "=", line: "Math, units, currency, time zones and number bases." },
+  {
+    name: "Ask",
+    key: "?",
+    line: "Answers from your AI providers, labelled with provider and model.",
+  },
+  { name: "Projects", key: "@", line: "Code folders under your dev roots." },
 ];
 
 export function Features() {
   return (
     <section aria-labelledby="features">
-      <h2 className="mb-2 text-2xl font-semibold">Four prefixes, one bar</h2>
+      <h2 className="mb-2 text-2xl font-semibold">Five prefixes, one bar</h2>
       <p className="mb-4 text-muted">
-        Type the prefix first in an empty bar. Plain text with no prefix searches nothing.
+        Type a prefix first to narrow the search. Plain text with no prefix searches apps and
+        commands and always offers Find, Web and Ask.
       </p>
-      <ul className="mb-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <ul className="mb-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         {MODES.map((m) => (
-          <li key={m.name} className="rounded-[var(--l-r)] border border-line bg-surface p-4">
+          <li key={m.name} className="rounded-[var(--l-r-card)] border border-line bg-surface p-4">
             <h3 className="font-semibold">
               {m.name} <code className="font-mono text-accent">{m.key}</code>
             </h3>
@@ -136,13 +161,13 @@ export function Features() {
       <ul className="grid gap-4 sm:grid-cols-2">
         {FEATURES.map((f) => (
           <li key={f.title}>
-            <article className="flex h-full flex-col gap-2 rounded-[var(--l-r)] border border-line bg-surface p-4">
+            <article className="flex h-full flex-col gap-2 rounded-[var(--l-r-card)] border border-line bg-surface p-4">
               <header className="flex items-baseline justify-between gap-2">
                 <h3 className="font-semibold">{f.title}</h3>
                 <span className="font-mono text-xs text-muted">{f.since}</span>
               </header>
               <p className="text-muted">{f.line}</p>
-              <code className="mt-auto w-fit max-w-full break-words rounded-[var(--l-r2)] border border-line bg-bg px-2 py-1 font-mono text-fg">
+              <code className="mt-auto w-fit max-w-full break-words rounded-[var(--l-r-key)] border border-line bg-bg px-2 py-1 font-mono text-fg">
                 {f.example}
               </code>
               {f.doc && (

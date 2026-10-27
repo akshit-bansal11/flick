@@ -16,5 +16,11 @@ export default defineConfig({
     },
   },
   resolve: { dedupe: ["react", "react-dom"] },
-  test: { environment: "jsdom", passWithNoTests: true },
+  // Vitest empties CSS by default; the token tests read the CSS files through ?raw.
+  test: {
+    environment: "jsdom",
+    passWithNoTests: true,
+    css: { include: [/\.css/] },
+    setupFiles: ["./src/test-setup.ts"],
+  },
 });

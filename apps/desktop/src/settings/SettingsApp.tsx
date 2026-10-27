@@ -3,17 +3,18 @@ import { type ReactElement, useEffect, useState } from "react";
 import { FirstRun } from "../firstrun/FirstRun";
 import * as ipc from "../ipc";
 import { fromEvent, idFor } from "../shortcuts";
-import { applyAppearance } from "../theme";
+import { applyTheme } from "../theme";
 import { Tour } from "../tour/Tour";
 import { About } from "./About";
 import { Appearance } from "./Appearance";
 import * as api from "./api";
 import { Decision } from "./Decision";
-import { Features } from "./Features";
 import { General } from "./General";
 import { Integrations } from "./Integrations";
 import { Nav, PAGES, type PageId } from "./Nav";
+import { Prefixes } from "./Prefixes";
 import { Providers } from "./Providers";
+import { PreviewProvider } from "./Row";
 import { errorText, type SettingsView } from "./types";
 import "./settings.css";
 
@@ -24,6 +25,7 @@ export function resolveView(section: string | null | undefined, current: View | 
   const s = section?.replace(/^#/, "");
   if (s === "first-run") return "first-run";
   if (s === "ai-providers") return "providers";
+  if (s === "features") return "prefixes";
   return PAGES.find((p) => p.id === s)?.id ?? current;
 }
 
@@ -53,6 +55,7 @@ export function SettingsRoot() {
 export function SettingsApp({ page, onPage }: { page: PageId; onPage: (id: PageId) => void }) {
   const [settings, setSettings] = useState<SettingsView | null>(null);
   const [counts, setCounts] = useState<string | null>(null);
+  const [version, setVersion] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [touring, setTouring] = useState(false);
 
@@ -67,6 +70,10 @@ export function SettingsApp({ page, onPage }: { page: PageId; onPage: (id: PageI
         .then((l) => setCounts(`${l.onCount}/${l.features.length} on`))
         .catch((e: unknown) => console.warn("list_features failed", e));
     refreshCounts();
+    api
+      .getAbout()
+      .then((a) => setVersion(a.version))
+      .catch((e: unknown) => console.warn("get_about failed", e));
     const un = api.onFeaturesChanged(refreshCounts);
     return () => {
       un.then((f) => f());
@@ -101,7 +108,7 @@ export function SettingsApp({ page, onPage }: { page: PageId; onPage: (id: PageI
     const apply = () =>
       api
         .getAppearance()
-        .then((a) => applyAppearance(document.documentElement, { ...a, glassAvailable: true }))
+        .then((a) => applyTheme(document.documentElement, a.active))
         .catch((e: unknown) => console.warn("get_appearance failed", e));
     apply();
     const un = api.onSettingsChanged((p) => {
@@ -122,7 +129,7 @@ export function SettingsApp({ page, onPage }: { page: PageId; onPage: (id: PageI
       </p>
     ),
     appearance: <Appearance />,
-    features: <Features />,
+    prefixes: <Prefixes />,
     providers: <Providers />,
     engine: <Decision />,
     integrations: <Integrations />,
@@ -133,10 +140,12 @@ export function SettingsApp({ page, onPage }: { page: PageId; onPage: (id: PageI
 
   return (
     <div className="s-shell">
-      <Nav active={page} onSelect={onPage} featuresCount={counts} />
-      <main key={page} className="s-main">
-        {pages[page]}
-      </main>
+      <PreviewProvider resetKey={page}>
+        <Nav active={page} onSelect={onPage} featuresCount={counts} version={version} />
+        <main key={page} className="s-main">
+          {pages[page]}
+        </main>
+      </PreviewProvider>
     </div>
   );
 }

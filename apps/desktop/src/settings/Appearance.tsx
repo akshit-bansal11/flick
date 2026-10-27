@@ -1,64 +1,48 @@
-import { type CSSProperties, useEffect, useRef, useState } from "react";
-import {
-  applyAppearance,
-  FORCED_SCHEME,
-  GLASS_MAX,
-  GLASS_MIN,
-  resolveScheme,
-  type Scheme,
-  THEMES,
-  type ThemeId,
-} from "../theme";
+import { useEffect, useRef, useState } from "react";
+import { type ActiveTheme, applyTheme, type Scheme, type ThemeView } from "../theme";
 import * as api from "./api";
-import { type AppearanceView, errorText } from "./types";
+import { SettingRow } from "./Row";
+import { ThemeList } from "./ThemeList";
+import type { ThemeSlot } from "./themePicker";
+import { type AppearancePatch, type AppearanceView, errorText } from "./types";
 
-const LABELS: Record<ThemeId, string> = {
-  glass: "Glass",
-  frost: "Frost",
-  midnight: "Midnight",
-  aurora: "Aurora",
-  ember: "Ember",
-  solid: "Solid",
+const SCHEMES: Scheme[] = ["system", "dark", "light"];
+const SCHEME_HINT: Record<Scheme, string> = {
+  system: "follows Windows",
+  dark: "always dark",
+  light: "always light",
 };
-const SCHEMES: { id: Scheme; label: string }[] = [
-  { id: "system", label: "System" },
-  { id: "dark", label: "Dark" },
-  { id: "light", label: "Light" },
-];
 
-/** Mini panel drawn from one theme's tokens. */
-function Swatch({ theme, scheme, glass }: { theme: ThemeId; scheme: Scheme; glass: number }) {
-  const dark = matchMedia("(prefers-color-scheme: dark)").matches;
-  return (
-    <span
-      className="s-swatch"
-      data-theme={theme}
-      data-scheme={resolveScheme({ theme, glass, scheme }, dark)}
-      style={{ "--l-glass-alpha": `${glass}%` } as CSSProperties}
-      aria-hidden="true"
-    >
-      <span className="s-swatch-dot" />
-      <span className="s-swatch-line" />
-      <span className="s-swatch-line s-swatch-line-short" />
-    </span>
-  );
-}
+const nameOf = (themes: ThemeView[], id: string) => themes.find((t) => t.id === id)?.name ?? id;
 
-/** Settings > Appearance: theme cards, glass strength and colour scheme. Each change saves at once. */
+/** Settings > Appearance: colour scheme, the theme for each scheme, and the theme picker. */
 export function Appearance() {
   const [a, setA] = useState<AppearanceView | null>(null);
+  const [themes, setThemes] = useState<ThemeView[]>([]);
   const [error, setError] = useState<string | null>(null);
-  /** Slider value while dragging; null when idle. Saved on release. */
-  const [drag, setDrag] = useState<number | null>(null);
+  const [picking, setPicking] = useState<ThemeSlot | null>(null);
+  /** Bumps on import and delete so the picker reopens on the fresh list; `id` is the new row. */
+  const [fresh, setFresh] = useState<{ n: number; id?: string }>({ n: 0 });
   /** Saves run one after another so a slow reply never lands after a newer one. */
   const chain = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
-    api
-      .getAppearance()
-      .then(setA)
+    Promise.all([api.getAppearance(), api.listThemes()])
+      .then(([view, list]) => {
+        setA(view);
+        setThemes(list);
+      })
       .catch((e: unknown) => setError(errorText(e)));
   }, []);
+
+  // Whenever the picker closes or changes slot (Esc, unmount, `change` toggled off, a save),
+  // the saved theme is what stays painted: an unapplied preview never outlives its picker.
+  const saved = useRef<ActiveTheme | null>(null);
+  saved.current = a?.active ?? null;
+  useEffect(() => {
+    if (!picking) return;
+    return () => applyTheme(document.documentElement, saved.current);
+  }, [picking]);
 
   if (!a) {
     return (
@@ -68,119 +52,106 @@ export function Appearance() {
     );
   }
 
-  const save = (patch: Partial<AppearanceView>) => {
+  /** Saves a patch, applies the returned theme, and resolves true when it was stored. */
+  const save = (patch: AppearancePatch): Promise<boolean> => {
     const prev = a;
-    const next = { ...a, ...patch };
-    setA(next);
-    applyAppearance(document.documentElement, { ...next, glassAvailable: true });
-    chain.current = chain.current.then(async () => {
+    setA({ ...a, ...patch });
+    const done = chain.current.then(async () => {
       try {
-        setA(await api.setAppearance(patch));
+        const next = await api.setAppearance(patch);
+        setA(next);
+        applyTheme(document.documentElement, next.active);
         setError(null);
+        return true;
       } catch (e) {
         setA(prev);
-        applyAppearance(document.documentElement, { ...prev, glassAvailable: true });
+        applyTheme(document.documentElement, prev.active);
         setError(errorText(e));
+        return false;
       }
     });
+    chain.current = done.then(() => undefined);
+    return done;
   };
 
-  const commitGlass = () => {
-    if (drag === null) return;
-    setDrag(null);
-    if (drag !== a.glass) save({ glass: drag });
+  /** Takes the list an import or delete returned; paints the imported row, else the saved theme. */
+  const onThemes = (list: ThemeView[], id?: string) => {
+    setThemes(list);
+    setFresh((f) => ({ n: f.n + 1, id }));
+    const t = list.find((x) => x.id === id);
+    if (t) applyTheme(document.documentElement, { id: t.id, dark: t.dark, roles: t.roles });
+    else applyTheme(document.documentElement, saved.current);
   };
-  const glass = drag ?? a.glass;
 
-  const forced = FORCED_SCHEME[a.theme];
-  const reducedTransparency = matchMedia("(prefers-reduced-transparency: reduce)").matches;
+  const slotRow = (slot: ThemeSlot, label: string, id: string) => (
+    <SettingRow
+      label={label}
+      value={nameOf(themes, id)}
+      preview={{
+        title: label,
+        body: `The theme used when the scheme is ${slot === "darkTheme" ? "dark" : "light"}. Change opens a filterable list with a live preview.`,
+      }}
+    >
+      <button
+        type="button"
+        className="btn"
+        aria-expanded={picking === slot}
+        onClick={() => setPicking(picking === slot ? null : slot)}
+      >
+        change
+      </button>
+    </SettingRow>
+  );
 
   return (
     <section>
       <h1 className="s-title">Appearance</h1>
-      <p className="s-desc">Theme, glass strength and colour scheme for the launcher.</p>
+      <p className="s-desc">{themes.length} themes. Pick one, or one for dark and one for light.</p>
       {error && (
         <div className="s-error" role="alert">
           {error}
         </div>
       )}
 
-      <div role="radiogroup" aria-label="Theme" className="s-themes">
-        {THEMES.map((t) => (
-          <label key={t} className="s-theme-card">
-            <input
-              type="radio"
-              name="theme"
-              value={t}
-              checked={a.theme === t}
-              onChange={() => save({ theme: t })}
-            />
-            <Swatch theme={t} scheme={a.scheme} glass={a.glass} />
-            <span className="s-theme-name">{LABELS[t]}</span>
-          </label>
-        ))}
-      </div>
-
-      <div className="s-row">
-        <div className="s-row-text">
-          <label className="s-row-label" htmlFor="s-glass">
-            Glass
-          </label>
-          <div className="s-help">How strongly the panel tints what is behind it.</div>
-        </div>
-        <div className="s-row-control">
-          <input
-            id="s-glass"
-            type="range"
-            min={GLASS_MIN}
-            max={GLASS_MAX}
-            value={glass}
-            disabled={a.theme === "solid"}
-            onChange={(e) => {
-              const v = Number(e.target.value);
-              setDrag(v);
-              applyAppearance(document.documentElement, { ...a, glass: v, glassAvailable: true });
-            }}
-            onPointerUp={commitGlass}
-            onKeyUp={commitGlass}
-            onBlur={commitGlass}
-          />
-          <output htmlFor="s-glass">{glass}%</output>
-        </div>
-      </div>
-
-      <div className="s-row">
-        <div className="s-row-text">
-          <div className="s-row-label" id="s-scheme-label">
-            Colour scheme
-          </div>
-          {forced && (
-            <div className="s-help">
-              {LABELS[a.theme]} is always {forced}.
-            </div>
-          )}
-        </div>
-        <div role="radiogroup" aria-labelledby="s-scheme-label" className="s-seg">
+      <SettingRow
+        label="scheme"
+        hint={SCHEME_HINT[a.scheme]}
+        preview={{
+          title: "Colour scheme",
+          body: "System follows the Windows setting; dark and light force one of the two themes below.",
+        }}
+      >
+        <fieldset className="tg" aria-label="Colour scheme">
           {SCHEMES.map((s) => (
-            <label key={s.id} className="s-seg-item">
-              <input
-                type="radio"
-                name="scheme"
-                value={s.id}
-                checked={a.scheme === s.id}
-                disabled={!!forced}
-                onChange={() => save({ scheme: s.id })}
-              />
-              <span>{s.label}</span>
-            </label>
+            <button
+              key={s}
+              type="button"
+              aria-pressed={a.scheme === s}
+              onClick={() => {
+                if (a.scheme !== s) void save({ scheme: s });
+              }}
+            >
+              {s}
+            </button>
           ))}
-        </div>
-      </div>
+        </fieldset>
+      </SettingRow>
+      {slotRow("darkTheme", "dark theme", a.darkTheme)}
+      {slotRow("lightTheme", "light theme", a.lightTheme)}
 
-      {reducedTransparency && (
-        <p className="s-help">
-          Windows transparency effects are off, so the launcher shows an opaque panel.
-        </p>
+      {picking && (
+        <ThemeList
+          key={`${picking}-${fresh.n}`}
+          themes={themes}
+          slot={picking}
+          darkId={a.darkTheme}
+          lightId={a.lightTheme}
+          saved={a.active}
+          selectId={fresh.id}
+          onSave={save}
+          onThemes={onThemes}
+          onClose={() => setPicking(null)}
+        />
       )}
     </section>
   );

@@ -19,7 +19,7 @@ pub struct Config {
     pub schema_version: u32,
     /// General settings.
     pub general: General,
-    /// Theme, glass strength and colour scheme.
+    /// Colour scheme and the two theme slots.
     pub appearance: Appearance,
     /// Launcher window geometry.
     pub window: Window,
@@ -35,6 +35,74 @@ pub struct Config {
     pub integrations: Integrations,
     /// Installed-app and program search.
     pub apps: AppsConfig,
+    /// Home list: pinned items.
+    pub home: HomeConfig,
+}
+
+/// Most ids `[home] pins` may hold.
+pub const MAX_PINS: usize = 24;
+/// Longest pin id, in characters.
+pub const MAX_PIN_LEN: usize = 1024;
+
+/// `[home]`
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct HomeConfig {
+    /// Pinned item ids (`app:` or `file:` keys), in pin order.
+    pub pins: Vec<String>,
+}
+
+/// Why a pin change was refused. The text is shown to the user.
+#[derive(thiserror::Error, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PinError {
+    /// Only apps and files can be pinned, and the id must fit [`MAX_PIN_LEN`].
+    #[error("only apps and files can be pinned")]
+    Invalid,
+    /// The item is not in the current results, so it cannot be pinned.
+    #[error("that result is no longer available to pin")]
+    Unavailable,
+    /// [`MAX_PINS`] items are already pinned.
+    #[error("you can pin at most {max} items; unpin one first", max = MAX_PINS)]
+    Full,
+}
+
+/// Whether `id` may be pinned: an `app:` or `file:` key of at most [`MAX_PIN_LEN`] characters.
+fn valid_pin(id: &str) -> bool {
+    (id.starts_with("app:") || id.starts_with("file:")) && id.chars().count() <= MAX_PIN_LEN
+}
+
+/// Drops invalid and repeated ids and cuts the list to [`MAX_PINS`], keeping order. Used on load so
+/// an old or hand-edited config still opens.
+fn sanitize_pins(pins: Vec<String>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for p in pins {
+        if valid_pin(&p) && !out.contains(&p) && out.len() < MAX_PINS {
+            out.push(p);
+        }
+    }
+    out
+}
+
+impl HomeConfig {
+    /// Unpins `id` when pinned, else pins it. `known` says whether `id` is in the current results;
+    /// an unknown id can only be unpinned. Returns `true` when it is now pinned.
+    pub fn toggle(&mut self, id: &str, known: bool) -> Result<bool, PinError> {
+        if let Some(i) = self.pins.iter().position(|p| p == id) {
+            self.pins.remove(i);
+            return Ok(false);
+        }
+        if !valid_pin(id) {
+            return Err(PinError::Invalid);
+        }
+        if !known {
+            return Err(PinError::Unavailable);
+        }
+        if self.pins.len() >= MAX_PINS {
+            return Err(PinError::Full);
+        }
+        self.pins.push(id.to_owned());
+        Ok(true)
+    }
 }
 
 /// `[apps]`
@@ -215,46 +283,105 @@ pub struct General {
     pub check_updates: bool,
 }
 
-/// Theme ids the UI ships.
-pub const THEMES: [&str; 6] = ["glass", "frost", "midnight", "aurora", "ember", "solid"];
 /// Colour schemes.
 pub const SCHEMES: [&str; 3] = ["system", "dark", "light"];
-/// Allowed range of the glass tint opacity, percent.
-pub const GLASS_RANGE: std::ops::RangeInclusive<u8> = 30..=95;
 
 /// `[appearance]`
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Appearance {
-    /// One of [`THEMES`].
-    pub theme: String,
-    /// Tint opacity in percent, within [`GLASS_RANGE`].
-    pub glass: u8,
+    /// Pre-themes `theme` key; read once by [`Appearance::migrate_legacy`], never written.
+    #[serde(rename = "theme", default, skip_serializing)]
+    pub legacy_theme: Option<String>,
     /// One of [`SCHEMES`].
     pub scheme: String,
+    /// Theme id used in the dark scheme; absent means the built-in dark default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dark_theme: Option<String>,
+    /// Theme id used in the light scheme; absent means the built-in light default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub light_theme: Option<String>,
 }
 
 impl Default for Appearance {
     fn default() -> Self {
         Self {
-            theme: "glass".into(),
-            glass: 62,
+            legacy_theme: None,
             scheme: "system".into(),
+            dark_theme: None,
+            light_theme: None,
         }
     }
 }
 
+/// Keeps only `[a-z0-9:-]` so an id can be shown in an error without echoing arbitrary text.
+fn safe_id(id: &str) -> String {
+    id.chars()
+        .filter(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, ':' | '-'))
+        .collect()
+}
+
 impl Appearance {
-    /// Checks every field; the error names the first bad one.
-    pub fn validate(&self) -> Result<(), String> {
-        if !THEMES.contains(&self.theme.as_str()) {
-            return Err(format!("theme must be one of {}", THEMES.join(", ")));
+    /// Theme id for the dark scheme: the stored id or [`brand::DEFAULT_THEME_ID`].
+    pub fn dark_id(&self) -> &str {
+        self.dark_theme
+            .as_deref()
+            .unwrap_or(brand::DEFAULT_THEME_ID)
+    }
+
+    /// Theme id for the light scheme: the stored id or [`brand::DEFAULT_THEME_LIGHT_ID`].
+    pub fn light_id(&self) -> &str {
+        self.light_theme
+            .as_deref()
+            .unwrap_or(brand::DEFAULT_THEME_LIGHT_ID)
+    }
+
+    /// Maps the legacy `theme` value onto the two theme slots, once: the value is consumed, and
+    /// nothing changes while a slot is already set. `frost` becomes the light theme, `midnight`,
+    /// `aurora` and `ember` the dark theme; any other value (`glass`, `solid`) leaves the defaults.
+    /// When the old theme forced a scheme and `scheme` is `system`, the scheme becomes that one so
+    /// the look is kept.
+    pub fn migrate_legacy(&mut self) {
+        let Some(theme) = self.legacy_theme.take() else {
+            return;
+        };
+        if self.dark_theme.is_some() || self.light_theme.is_some() {
+            return;
         }
+        let dark = match theme.as_str() {
+            "frost" => false,
+            "midnight" | "aurora" | "ember" => true,
+            _ => return,
+        };
+        if dark {
+            self.dark_theme = Some(theme);
+        } else {
+            self.light_theme = Some(theme);
+        }
+        if self.scheme == "system" {
+            self.scheme = if dark { "dark" } else { "light" }.into();
+        }
+    }
+
+    /// Checks the scheme and both theme slots against `lookup`, which returns `Some(is_dark)` for a
+    /// known id and `None` for an unknown one. The dark slot must hold a dark theme, the light slot
+    /// a light one.
+    pub fn validate_themes(&self, lookup: &dyn Fn(&str) -> Option<bool>) -> Result<(), String> {
         if !SCHEMES.contains(&self.scheme.as_str()) {
             return Err("scheme must be system, dark or light".into());
         }
-        if !GLASS_RANGE.contains(&self.glass) {
-            return Err("glass must be between 30 and 95".into());
+        for (slot, id, want_dark) in [
+            ("dark_theme", self.dark_id(), true),
+            ("light_theme", self.light_id(), false),
+        ] {
+            match lookup(id) {
+                None => return Err(format!("{slot}: unknown theme {}", safe_id(id))),
+                Some(is_dark) if is_dark != want_dark => {
+                    let kind = if want_dark { "dark" } else { "light" };
+                    return Err(format!("{slot}: {} is not a {kind} theme", safe_id(id)));
+                }
+                Some(_) => {}
+            }
         }
         Ok(())
     }
@@ -713,6 +840,7 @@ impl Default for Config {
             decision: Decision::default(),
             features: default_features(),
             integrations: Integrations::default(),
+            home: HomeConfig::default(),
         }
     }
 }
@@ -735,6 +863,7 @@ impl Config {
             source,
         })?;
         c.apps.skip = sanitize_skip(std::mem::take(&mut c.apps.skip));
+        c.home.pins = sanitize_pins(std::mem::take(&mut c.home.pins));
         // Configs written before the Custom engine existed lack it in the order.
         if !c.decision.order.iter().any(|i| i == "custom") {
             c.decision.order.push("custom".into());
@@ -746,6 +875,7 @@ impl Config {
         {
             c.appearance.scheme = t;
         }
+        c.appearance.migrate_legacy();
         Ok(c)
     }
 
@@ -775,6 +905,11 @@ fn env_dir(var: &'static str) -> Result<PathBuf, CoreError> {
 /// `%APPDATA%\<APP_DISPLAY_NAME>\config.toml`.
 pub fn config_path() -> Result<PathBuf, CoreError> {
     env_dir("APPDATA").map(|d| d.join("config.toml"))
+}
+
+/// `%APPDATA%\<APP_DISPLAY_NAME>\themes`, where imported themes are saved as `<slug>.json`.
+pub fn themes_dir() -> Result<PathBuf, CoreError> {
+    env_dir("APPDATA").map(|d| d.join("themes"))
 }
 
 /// `%LOCALAPPDATA%\<APP_DISPLAY_NAME>`, parent of `cache\`, `data\` and `logs\`.
@@ -862,6 +997,63 @@ threshold = 0.7
         assert_eq!(c.integrations.markdown_file, "");
     }
 
+    fn pins(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| (*s).to_owned()).collect()
+    }
+
+    #[test]
+    fn sanitize_pins_drops_invalid_repeats_and_caps() {
+        let long = format!("app:{}", "x".repeat(MAX_PIN_LEN));
+        let ok = format!("file:{}", "y".repeat(MAX_PIN_LEN - 5));
+        let input = pins(&["cmd:lock", "app:a", "app:a", "file:b", "", &long, &ok]);
+        assert_eq!(sanitize_pins(input), ["app:a", "file:b", ok.as_str()]);
+        let many: Vec<String> = (0..40).map(|i| format!("app:{i}")).collect();
+        let got = sanitize_pins(many);
+        assert_eq!(got.len(), MAX_PINS);
+        assert_eq!(got[0], "app:0");
+    }
+
+    #[test]
+    fn toggle_pins_then_unpins() {
+        let mut h = HomeConfig::default();
+        assert_eq!(h.toggle("app:a", true), Ok(true));
+        assert_eq!(h.toggle("file:b", true), Ok(true));
+        assert_eq!(h.pins, ["app:a", "file:b"]);
+        // Unpinning needs no cache entry.
+        assert_eq!(h.toggle("app:a", false), Ok(false));
+        assert_eq!(h.pins, ["file:b"]);
+    }
+
+    #[test]
+    fn toggle_refuses_bad_unknown_and_the_25th() {
+        let mut h = HomeConfig::default();
+        assert_eq!(h.toggle("cmd:lock", true), Err(PinError::Invalid));
+        assert_eq!(h.toggle("app:a", false), Err(PinError::Unavailable));
+        for i in 0..MAX_PINS {
+            assert_eq!(h.toggle(&format!("app:{i}"), true), Ok(true));
+        }
+        let e = h.toggle("app:extra", true).unwrap_err();
+        assert_eq!(e, PinError::Full);
+        assert!(e.to_string().contains("24"));
+        assert_eq!(h.pins.len(), MAX_PINS);
+        // A full list can still be unpinned from.
+        assert_eq!(h.toggle("app:0", false), Ok(false));
+    }
+
+    #[test]
+    fn pins_round_trip_and_old_config_has_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("config.toml");
+        let mut c = Config::default();
+        c.home.pins = pins(&["app:a", "file:C:/x.txt"]);
+        c.save(&p).unwrap();
+        assert_eq!(Config::load(&p).unwrap(), c);
+        let old: Config = toml::from_str("[general]\nfirst_run_done = true\n").unwrap();
+        assert!(old.home.pins.is_empty());
+        fs::write(&p, "[home]\npins = [\"bogus\", \"app:a\", \"app:a\"]\n").unwrap();
+        assert_eq!(Config::load(&p).unwrap().home.pins, ["app:a"]);
+    }
+
     #[test]
     fn round_trip_and_atomic_save() {
         let dir = tempfile::tempdir().unwrap();
@@ -892,15 +1084,23 @@ threshold = 0.7
         fs::write(&p, "[general]\ntheme = \"light\"\n").unwrap();
         let c = Config::load(&p).unwrap();
         assert_eq!(c.appearance.scheme, "light");
-        assert_eq!(c.appearance.theme, "glass");
-        assert_eq!(c.appearance.glass, 62);
-        assert!(c.appearance.validate().is_ok());
-        let bad = Appearance {
-            glass: 20,
-            ..Appearance::default()
-        };
-        assert!(bad.validate().is_err());
+        assert_eq!(c.appearance.dark_theme, None);
+        assert_eq!(c.appearance.light_theme, None);
         assert_eq!(c.general.hotkey, "Alt+Space");
+    }
+
+    #[test]
+    fn old_appearance_keys_load_and_are_not_written_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("config.toml");
+        fs::write(&p, "[appearance]\ntheme = \"midnight\"\nglass = 62\n").unwrap();
+        let c = Config::load(&p).unwrap();
+        assert_eq!(c.appearance.dark_theme.as_deref(), Some("midnight"));
+        assert_eq!(c.appearance.scheme, "dark");
+        assert_eq!(c.appearance.legacy_theme, None);
+        c.save(&p).unwrap();
+        let text = fs::read_to_string(&p).unwrap();
+        assert!(!text.contains("glass"));
     }
 }
 

@@ -19,7 +19,16 @@ vi.mock("./api", () => ({
   reindex: vi.fn(() => Promise.resolve()),
   listFeatures: vi.fn(),
   onFeaturesChanged: vi.fn(() => Promise.resolve(() => {})),
-  getAppearance: vi.fn(() => Promise.resolve({ theme: "glass", glass: 62, scheme: "system" })),
+  getAppearance: vi.fn(() =>
+    Promise.resolve({
+      scheme: "system",
+      darkTheme: "a",
+      lightTheme: "b",
+      active: null,
+    }),
+  ),
+  listThemes: vi.fn(() => Promise.resolve([])),
+  getAbout: vi.fn(() => Promise.resolve({ version: "1.2.3" })),
   onSettingsChanged: vi.fn(() => Promise.resolve(() => {})),
 }));
 
@@ -69,23 +78,70 @@ afterEach(() => {
 });
 
 describe("SettingsApp", () => {
-  it("shows the Features count", async () => {
+  it("shows the Prefixes item with its on count", async () => {
     await mount();
+    expect(screen.getByRole("button", { name: /^prefixes/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^features/ })).toBeNull();
     expect(screen.getByText("2/3 on")).toBeTruthy();
   });
 
   it("arrow keys move through the nav with roving tabindex", async () => {
     await mount();
-    const general = screen.getByRole("button", { name: "General" });
+    const general = screen.getByRole("button", { name: "general" });
     expect(general.getAttribute("aria-current")).toBe("page");
     expect(general.tabIndex).toBe(0);
     act(() => {
       fireEvent.keyDown(general, { key: "ArrowDown" });
     });
-    const features = screen.getByRole("button", { name: "Appearance" });
-    expect(document.activeElement).toBe(features);
-    expect(features.getAttribute("aria-current")).toBe("page");
+    const next = screen.getByRole("button", { name: "appearance" });
+    expect(document.activeElement).toBe(next);
+    expect(next.getAttribute("aria-current")).toBe("page");
     expect(general.tabIndex).toBe(-1);
+  });
+
+  it("Home and End jump to the first and last item, arrows wrap", async () => {
+    await mount();
+    const general = screen.getByRole("button", { name: "general" });
+    act(() => {
+      fireEvent.keyDown(general, { key: "End" });
+    });
+    const about = screen.getByRole("button", { name: /^about/ });
+    expect(document.activeElement).toBe(about);
+    expect(about.getAttribute("aria-current")).toBe("page");
+    act(() => {
+      fireEvent.keyDown(about, { key: "Home" });
+    });
+    expect(document.activeElement).toBe(general);
+    act(() => {
+      fireEvent.keyDown(general, { key: "ArrowUp" });
+    });
+    expect(document.activeElement).toBe(about);
+  });
+
+  it("nav groups # launcher, # ai, # connect; About last with version", async () => {
+    await mount();
+    const nav = screen.getByRole("navigation", { name: "Settings" });
+    const order = [...nav.children].map((e) => (e.textContent ?? "").replace(/^›/, ""));
+    expect(order.filter((t) => t.startsWith("# "))).toEqual(["# launcher", "# ai", "# connect"]);
+    const at = (t: string) => order.findIndex((x) => x.startsWith(t));
+    expect(at("# launcher")).toBe(0);
+    expect([at("general"), at("appearance"), at("prefixes"), at("# ai")]).toEqual([1, 2, 3, 4]);
+    expect([at("providers"), at("decision engine"), at("# connect")]).toEqual([5, 6, 7]);
+    expect(at("integrations")).toBe(8);
+    expect(at("about")).toBe(order.length - 1);
+    expect(order.at(-1)).toBe("about · v1.2.3");
+  });
+
+  it("clicking a nav item selects its page", async () => {
+    await mount();
+    expect(screen.getByRole("heading", { name: "General" })).toBeTruthy();
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: "appearance" }));
+    });
+    expect(screen.getByRole("button", { name: "appearance" }).getAttribute("aria-current")).toBe(
+      "page",
+    );
+    expect(screen.queryByRole("heading", { name: "General" })).toBeNull();
   });
 
   it("Ctrl+Tab and Ctrl+Shift+Tab step through the pages", async () => {
@@ -93,13 +149,13 @@ describe("SettingsApp", () => {
     act(() => {
       fireEvent.keyDown(window, { key: "Tab", ctrlKey: true });
     });
-    expect(screen.getByRole("button", { name: "Appearance" }).getAttribute("aria-current")).toBe(
+    expect(screen.getByRole("button", { name: "appearance" }).getAttribute("aria-current")).toBe(
       "page",
     );
     act(() => {
       fireEvent.keyDown(window, { key: "Tab", ctrlKey: true, shiftKey: true });
     });
-    expect(screen.getByRole("button", { name: "General" }).getAttribute("aria-current")).toBe(
+    expect(screen.getByRole("button", { name: "general" }).getAttribute("aria-current")).toBe(
       "page",
     );
   });
@@ -125,14 +181,14 @@ describe("SettingsApp", () => {
       { key: "Tab", ctrlKey: true },
     ]) {
       act(() => {
-        fireEvent.click(screen.getByText("Change"));
+        fireEvent.click(screen.getByText("change"));
       });
       act(() => {
         fireEvent.keyDown(screen.getByText(/Press keys/), o);
       });
     }
     expect(ipc.closeWindow).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "General" }).getAttribute("aria-current")).toBe(
+    expect(screen.getByRole("button", { name: "general" }).getAttribute("aria-current")).toBe(
       "page",
     );
   });
@@ -153,7 +209,7 @@ describe("SettingsApp", () => {
     act(() => {
       fireEvent.keyDown(input, { key: "Tab", ctrlKey: true });
     });
-    expect(screen.getByRole("button", { name: "General" }).getAttribute("aria-current")).toBe(
+    expect(screen.getByRole("button", { name: "general" }).getAttribute("aria-current")).toBe(
       "page",
     );
   });
@@ -161,14 +217,14 @@ describe("SettingsApp", () => {
   it("clear history needs a second confirming click", async () => {
     await mount();
     act(() => {
-      fireEvent.click(screen.getByRole("button", { name: "Clear history" }));
+      fireEvent.click(screen.getByRole("button", { name: "clear" }));
     });
     expect(api.clearHistory).not.toHaveBeenCalled();
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Confirm clear" }));
+      fireEvent.click(screen.getByRole("button", { name: "confirm clear" }));
     });
     expect(api.clearHistory).toHaveBeenCalledWith("all");
-    expect(screen.queryByRole("button", { name: "Confirm clear" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "confirm clear" })).toBeNull();
   });
 });
 
@@ -177,6 +233,8 @@ describe("resolveView", () => {
     expect(resolveView("#first-run", null)).toBe("first-run");
     expect(resolveView("providers", "general")).toBe("providers");
     expect(resolveView("ai-providers", "general")).toBe("providers");
+    expect(resolveView("#features", "general")).toBe("prefixes");
+    expect(resolveView("prefixes", "general")).toBe("prefixes");
     expect(resolveView("nope", "about")).toBe("about");
     expect(resolveView(null, null)).toBeNull();
   });

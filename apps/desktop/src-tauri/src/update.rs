@@ -1,7 +1,7 @@
 //! Update-available notice: one GitHub release lookup, no timers.
 //!
 //! Runs once shortly after startup and again on launcher open when the last check is over a day
-//! old. The tray item forces a check (or opens the release page when one is already known).
+//! old. The tray menu's update item forces a check (or installs the update already known).
 use crate::state::{AppState, Busy};
 use launcher_core::brand::{APP_DISPLAY_NAME, APP_NAME, REPO};
 use launcher_core::config::local_data_dir;
@@ -10,8 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tauri::menu::MenuItem;
-use tauri::{AppHandle, Manager, Wry};
+use tauri::{AppHandle, Manager};
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_updater::UpdaterExt;
 
@@ -39,20 +38,27 @@ struct Found {
     url: String,
 }
 
-/// Managed state: the single-flight guard, the tray item and the update found so far.
+/// Managed state: the single-flight guard and the update found so far.
+#[derive(Default)]
 pub struct UpdateState {
     busy: Busy,
-    item: MenuItem<Wry>,
     known: Mutex<Option<Found>>,
 }
 
-/// Registers the update state; `item` is the tray entry whose text changes when an update is found.
-pub fn init(app: &tauri::App, item: MenuItem<Wry>) {
-    app.manage(UpdateState {
-        busy: Busy::default(),
-        item,
-        known: Mutex::new(None),
-    });
+impl UpdateState {
+    fn known_version(&self) -> Option<String> {
+        self.known.lock().as_ref().map(|f| f.version.clone())
+    }
+}
+
+/// Registers the update state.
+pub fn init(app: &tauri::App) {
+    app.manage(UpdateState::default());
+}
+
+/// Version of the update found so far, for the tray menu's Install item.
+pub fn available(app: &AppHandle) -> Option<String> {
+    app.try_state::<UpdateState>()?.known_version()
 }
 
 /// Startup check: after a short delay, off the setup path.
@@ -70,7 +76,8 @@ pub fn check_if_stale(app: &AppHandle) {
     tauri::async_runtime::spawn(async move { run(&app, false).await });
 }
 
-/// Tray click: opens the known release page, otherwise checks now.
+/// Tray menu's update item: installs the known update (falling back to its release page),
+/// otherwise checks now.
 pub fn on_tray(app: &AppHandle) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -111,7 +118,19 @@ async fn install(app: &AppHandle) -> anyhow::Result<()> {
     let handle = app.clone();
     let updater = app
         .updater_builder()
-        .on_before_exit(move || crate::state::shutdown(&handle))
+        .on_before_exit(move || {
+            // This hook runs inside the tokio task that called `download_and_install`, and
+            // `shutdown` uses `block_on`, which panics when called from a runtime thread. A plain
+            // OS thread has no runtime, so run it there and wait. The other callers (the
+            // `RunEvent::Exit` handler for a normal or tray quit) run on the main thread already.
+            let handle = handle.clone();
+            if std::thread::spawn(move || crate::state::shutdown(&handle))
+                .join()
+                .is_err()
+            {
+                tracing::warn!("shutdown before update panicked");
+            }
+        })
         .build()?;
     let Some(update) = updater.check().await? else {
         anyhow::bail!("no signed update published yet");
@@ -254,12 +273,6 @@ async fn run(app: &AppHandle, manual: bool) {
     match result {
         Ok(Some(f)) => {
             let title = format!("{APP_DISPLAY_NAME} {} is available", f.version);
-            if let Err(err) = st
-                .item
-                .set_text(format!("Install {APP_DISPLAY_NAME} {}", f.version))
-            {
-                tracing::warn!(%err, "tray text update failed");
-            }
             if manual || stored.notified_version.as_deref() != Some(f.version.as_str()) {
                 toast(
                     app,
@@ -322,6 +335,17 @@ mod tests {
             fallback
         );
         assert_eq!(safe_url(""), fallback);
+    }
+
+    #[test]
+    fn known_version_follows_the_found_update() {
+        let st = UpdateState::default();
+        assert_eq!(st.known_version(), None);
+        *st.known.lock() = Some(Found {
+            version: "0.0.2".into(),
+            url: safe_url(""),
+        });
+        assert_eq!(st.known_version().as_deref(), Some("0.0.2"));
     }
 
     #[test]

@@ -9,16 +9,27 @@ export interface KeyInput {
   shift: boolean;
   alt: boolean;
   meta?: boolean;
-  /** Physical key (KeyboardEvent.code); lets Ctrl+1-4 and Ctrl+/ work on layouts where those need Shift. */
+  /** Physical key (KeyboardEvent.code); lets Ctrl+1-5 and Ctrl+/ work on layouts where those need Shift. */
   code?: string;
 }
 
 export type Scope = LaunchMode | "launcher" | "settings" | "tour";
 
 /** Runtime facts a shortcut can depend on; the sheet explains them, the footer hides the hint without them. */
-export type Condition = "adminAction" | "armedProcess" | "copyValue" | "attachment" | "answer";
+export type Condition =
+  | "adminAction"
+  | "armedProcess"
+  | "copyValue"
+  | "attachment"
+  | "answer"
+  | "pathItem"
+  | "revealable"
+  | "pinnable";
 
 export const WHEN_TEXT: Record<Condition, string> = {
+  pinnable: "result is an app, file or folder",
+  pathItem: "result is a file or folder",
+  revealable: "result has a location",
   adminAction: "result can run as admin",
   armedProcess: "after arrowing to a process",
   copyValue: "result has a value",
@@ -38,40 +49,53 @@ export interface Shortcut {
   foot?: string;
 }
 
-const CMD_RUN_FIND = ["commands", "run", "find"] as const;
+const LIST_SCOPES = ["none", "find", "commands", "calc", "projects"] as const;
 
 export const SHORTCUTS: readonly Shortcut[] = [
   {
     id: "kill",
     keys: "Delete",
     label: "End process",
-    scope: "commands",
+    scope: ["none", "commands"],
     when: "armedProcess",
     foot: "kill",
   },
-  { id: "enterMode", keys: "Enter", label: "Enter mode", scope: "none" },
-  { id: "open", keys: "Enter", label: "Open", scope: CMD_RUN_FIND, foot: "open" },
+  { id: "open", keys: "Enter", label: "Open", scope: LIST_SCOPES, foot: "open" },
   {
     id: "location",
     keys: "Ctrl+Enter",
     label: "Show location",
-    scope: CMD_RUN_FIND,
+    scope: ["none", "find"],
+    when: "revealable",
     foot: "location",
   },
   {
     id: "admin",
     keys: "Ctrl+Shift+Enter",
     label: "Run as admin",
-    scope: ["commands", "run"],
+    scope: ["none", "find"],
     when: "adminAction",
     foot: "admin",
   },
-  { id: "copyPath", keys: "Ctrl+Shift+C", label: "Copy path", scope: "find", foot: "copy path" },
+  {
+    id: "themeSlot",
+    keys: "Ctrl+Enter",
+    label: "Use theme for its variant only (theme list)",
+    scope: "commands",
+  },
+  {
+    id: "copyPath",
+    keys: "Ctrl+Shift+C",
+    label: "Copy path",
+    scope: "find",
+    when: "pathItem",
+    foot: "copy path",
+  },
   {
     id: "copyResult",
     keys: "Ctrl+Shift+C",
     label: "Copy result",
-    scope: "commands",
+    scope: ["none", "commands", "calc"],
     when: "copyValue",
     foot: "copy",
   },
@@ -97,12 +121,23 @@ export const SHORTCUTS: readonly Shortcut[] = [
   },
   { id: "up", keys: "Up", label: "Previous result", scope: "launcher" },
   { id: "down", keys: "Down", label: "Next result", scope: "launcher" },
-  { id: "go:commands", keys: "Ctrl+1", label: "Go to Commands", scope: "launcher" },
-  { id: "go:run", keys: "Ctrl+2", label: "Go to Apps", scope: "launcher" },
-  { id: "go:find", keys: "Ctrl+3", label: "Go to Find", scope: "launcher" },
+  { id: "go:find", keys: "Ctrl+1", label: "Go to Open", scope: "launcher" },
+  { id: "go:commands", keys: "Ctrl+2", label: "Go to Commands", scope: "launcher" },
+  { id: "go:calc", keys: "Ctrl+3", label: "Go to Calc", scope: "launcher" },
   { id: "go:query", keys: "Ctrl+4", label: "Go to Ask", scope: "launcher" },
+  { id: "go:projects", keys: "Ctrl+5", label: "Go to Projects", scope: "launcher" },
+  { id: "tabNext", keys: "Ctrl+Tab", label: "Next mode tab", scope: "launcher" },
+  { id: "tabPrev", keys: "Ctrl+Shift+Tab", label: "Previous mode tab", scope: "launcher" },
   { id: "leave", keys: "Backspace", label: "Leave mode (empty input)", scope: "launcher" },
   { id: "back", keys: "Esc", label: "Close, clear or hide", scope: "launcher" },
+  {
+    id: "pin",
+    keys: "Ctrl+P",
+    label: "Pin or unpin",
+    scope: ["none", "find"],
+    when: "pinnable",
+    foot: "pin",
+  },
   { id: "openSettings", keys: "Ctrl+,", label: "Open Settings", scope: "launcher" },
   { id: "sheet", keys: "F1", label: "Shortcut list", scope: "launcher", foot: "shortcuts" },
   { id: "sheetAlt", keys: "Ctrl+/", label: "Shortcut list", scope: "launcher" },
@@ -179,12 +214,18 @@ export const BROWSER_CHORDS: readonly string[] = [
   "Ctrl+Shift+Tab",
 ];
 
-/** Browser chords with their native meaning in the Settings window (close, next page). */
-const SETTINGS_OWN = ["Ctrl+W", "Ctrl+Tab", "Ctrl+Shift+Tab"];
+/** Browser chords a scope may claim despite BROWSER_CHORDS (Settings: close, pages; launcher: tabs, pin). */
+const OWN_CHORDS: Partial<Record<Scope, readonly string[]>> = {
+  settings: ["Ctrl+W", "Ctrl+Tab", "Ctrl+Shift+Tab"],
+  launcher: ["Ctrl+Tab", "Ctrl+Shift+Tab"],
+  // Pin lives where app and file rows are listed.
+  none: ["Ctrl+P"],
+  find: ["Ctrl+P"],
+};
 
 /** True for a chord a scope must never claim: listed above or any Win-key chord. */
 export const isReserved = (chord: string, scope?: Scope): boolean =>
-  !(scope === "settings" && SETTINGS_OWN.includes(chord)) &&
+  !(scope !== undefined && (OWN_CHORDS[scope] ?? []).includes(chord)) &&
   (RESERVED.includes(chord) || BROWSER_CHORDS.includes(chord) || chord.split("+").includes("Win"));
 
 const KEY_NAMES: Record<string, string> = {
@@ -197,10 +238,10 @@ const KEY_NAMES: Record<string, string> = {
 };
 const KEY_ORIGINAL = Object.fromEntries(Object.entries(KEY_NAMES).map(([k, v]) => [v, k]));
 
-/** Key name; with Ctrl or Alt held, Digit1-4 and Slash come from the physical key (AZERTY needs Shift for digits). */
+/** Key name; with Ctrl or Alt held, Digit1-5 and Slash come from the physical key (AZERTY needs Shift for digits). */
 function nameOf(k: KeyInput): string {
   if (k.code && (k.ctrl || k.alt)) {
-    if (/^Digit[1-4]$/.test(k.code)) return k.code.slice(5);
+    if (/^Digit[1-5]$/.test(k.code)) return k.code.slice(5);
     if (k.code === "Slash") return "/";
   }
   return KEY_NAMES[k.key] ?? (k.key.length === 1 ? k.key.toUpperCase() : k.key);
@@ -271,24 +312,30 @@ export function idFor(mode: LaunchMode | "settings", k: KeyInput): string | unde
   return undefined;
 }
 
-const CAP_NAMES: Record<string, string> = { Enter: "↵", Backspace: "⌫", Up: "↑", Down: "↓" };
+/** A chord as words, lower case: "Ctrl+Shift+Enter" becomes "ctrl+shift+enter". */
+export const keyWords = (chord: string): string => chord.toLowerCase();
 
-/** Key caps of a chord, ready for <kbd>: ["Ctrl", "Shift", "↵"]. */
-export const capsOf = (chord: string): string[] => chord.split("+").map((p) => CAP_NAMES[p] ?? p);
+/**
+ * Key names of a chord in their own case: ["Ctrl", "Shift", "Enter"]. They feed
+ * aria-keyshortcuts (which wants "Alt", "Control", "Shift" spelled that way); anything shown
+ * on screen goes through keyWords.
+ */
+export const capsOf = (chord: string): string[] => chord.split("+");
 
 /** Caps of a shortcut by id. */
 export const caps = (id: string): string[] => capsOf(shortcut(id).keys);
 
-/** Caps as one string, "Ctrl Shift ↵". */
-export const capsText = (id: string): string => caps(id).join(" ");
+/** A shortcut as words for prose, "ctrl shift enter". */
+export const capsText = (id: string): string => keyWords(shortcut(id).keys).split("+").join(" ");
 
 export const SCOPE_LABEL: Record<Scope, string> = {
   launcher: "Anywhere in the launcher",
   none: "Start",
+  find: "Open",
   commands: "Commands",
-  run: "Apps",
-  find: "Find",
+  calc: "Calc",
   query: "Ask",
+  projects: "Projects",
   settings: "Settings window",
   tour: "Tour",
 };
@@ -296,10 +343,11 @@ export const SCOPE_LABEL: Record<Scope, string> = {
 const SCOPE_ORDER: Scope[] = [
   "launcher",
   "none",
-  "commands",
-  "run",
   "find",
+  "commands",
+  "calc",
   "query",
+  "projects",
   "settings",
   "tour",
 ];

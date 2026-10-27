@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as ipc from "../ipc";
 import { errorText } from "../settings/types";
-import { fromEvent, parseChord, shortcut } from "../shortcuts";
-import { applyAppearance, DEFAULT_APPEARANCE } from "../theme";
+import { fromEvent, idFor, parseChord, shortcut } from "../shortcuts";
+import { type ActiveTheme, applyTheme } from "../theme";
 import type { LaunchMode, Outcome } from "../types";
 import { cancelsDefault } from "./keys";
 import { type Effect, type Event, initialState, reduce, type State } from "./reducer";
 
 /** Wires the pure reducer to the shell: runs effects through ipc.ts and feeds results back. */
-export function useLauncher(inputRef: React.RefObject<HTMLInputElement | null>) {
+export function useLauncher(
+  inputRef: React.RefObject<HTMLInputElement | null>,
+  initialShown?: ipc.ShownEvent | null,
+) {
   const [state, setState] = useState<State>(() => initialState());
   const panelRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef(state);
@@ -17,6 +20,8 @@ export function useLauncher(inputRef: React.RefObject<HTMLInputElement | null>) 
   const lastHeight = useRef(0);
   const syncHeight = useRef((_force: boolean) => {});
   const copiedTimer = useRef<number | undefined>(undefined);
+  /** The saved theme in use (last shown or applied); revert puts this back. */
+  const saved = useRef<ActiveTheme | null>(null);
 
   const dispatch = useCallback((ev: Event): boolean => {
     const prev = stateRef.current;
@@ -42,9 +47,12 @@ export function useLauncher(inputRef: React.RefObject<HTMLInputElement | null>) 
       switch (e.type) {
         case "search":
           ipc
-            .search({ seq: e.seq, mode: e.mode, text: e.text, scope: e.scope })
+            .search({ seq: e.seq, mode: e.mode, text: e.text, sources: e.sources })
             .then((res) => dispatch({ type: "results", seq: res.seq, items: res.items }))
-            .catch(warn);
+            .catch((err: unknown) => {
+              warn(err);
+              dispatch({ type: "searchFailed", seq: e.seq });
+            });
           break;
         case "launch":
           outcome(e.itemId, ipc.launch(e.itemId, e.admin));
@@ -107,6 +115,59 @@ export function useLauncher(inputRef: React.RefObject<HTMLInputElement | null>) 
             .then((r) => dispatch({ type: "thinkingModes", modes: r.modes, selected: r.selected }))
             .catch(warn);
           break;
+        case "loadHome":
+          ipc
+            .homeItems()
+            .then((r) => dispatch({ type: "homeLoaded", items: r.items, pins: r.pins }))
+            .catch(warn);
+          break;
+        case "togglePin":
+          ipc
+            .togglePin(e.itemId)
+            .then((r) => dispatch({ type: "homeLoaded", items: r.items, pins: r.pins }))
+            .catch((err: unknown) => {
+              warn(err);
+              dispatch({ type: "actionFailed", message: errorText(err) });
+            });
+          break;
+        case "loadThemes":
+          ipc
+            .listThemes()
+            .then((themes) => dispatch({ type: "themesLoaded", themes }))
+            .catch((err: unknown) => {
+              warn(err);
+              dispatch({ type: "themesLoaded", themes: [] });
+            });
+          break;
+        case "previewTheme":
+          // Repaint only: the list was loaded once, so an arrow key costs no IPC.
+          applyTheme(document.documentElement, {
+            id: e.theme.id,
+            dark: e.theme.dark,
+            roles: e.theme.roles,
+          });
+          break;
+        case "revertTheme":
+          applyTheme(document.documentElement, saved.current);
+          break;
+        case "applyTheme":
+          ipc
+            .setAppearance(e.patch)
+            .then((view) => {
+              saved.current = view.active;
+              applyTheme(document.documentElement, view.active);
+              dispatch({ type: "appearance", activeId: view.active?.id ?? null });
+            })
+            .catch((err: unknown) => {
+              warn(err);
+              applyTheme(document.documentElement, saved.current);
+              dispatch({ type: "appearance", activeId: saved.current?.id ?? null });
+              dispatch({ type: "actionFailed", message: errorText(err) });
+            });
+          break;
+        case "webSearch":
+          outcome("ui:web", ipc.webSearch(e.text));
+          break;
         case "setThinkingMode":
           ipc.setThinkingMode(e.id).catch(warn);
           break;
@@ -114,20 +175,24 @@ export function useLauncher(inputRef: React.RefObject<HTMLInputElement | null>) 
     }
   }, []);
 
+  const first = useRef(initialShown);
   useEffect(() => {
+    const onShown = (p: ipc.ShownEvent) => {
+      saved.current = p.appearance?.active ?? null;
+      applyTheme(document.documentElement, saved.current);
+      dispatch({ type: "shown" });
+      dispatch({ type: "appearance", activeId: saved.current?.id ?? null });
+      if (p.sources) {
+        dispatch({ type: "enabledSources", sources: p.sources, webTitle: p.webTitle ?? null });
+      }
+      inputRef.current?.focus();
+      requestAnimationFrame(() => {
+        syncHeight.current(true);
+        ipc.reportShown(p.shownId).catch(warn);
+      });
+    };
     const unlisten = [
-      ipc.onShown((p) => {
-        applyAppearance(document.documentElement, {
-          ...(p.appearance ?? DEFAULT_APPEARANCE),
-          glassAvailable: p.glass !== false,
-        });
-        dispatch({ type: "shown" });
-        inputRef.current?.focus();
-        requestAnimationFrame(() => {
-          syncHeight.current(true);
-          ipc.reportShown(p.shownId).catch(warn);
-        });
-      }),
+      ipc.onShown(onShown),
       ipc.onHidden(() => {
         lastHeight.current = 0;
         dispatch({ type: "hidden" });
@@ -148,7 +213,8 @@ export function useLauncher(inputRef: React.RefObject<HTMLInputElement | null>) 
         }),
       ),
     ];
-    dispatch({ type: "shown" });
+    if (first.current) onShown(first.current);
+    else dispatch({ type: "shown" });
     return () => {
       for (const u of unlisten) u.then((fn) => fn()).catch(warn);
     };
@@ -172,6 +238,8 @@ export function useLauncher(inputRef: React.RefObject<HTMLInputElement | null>) 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mode = stateRef.current.mode;
+      // Held Ctrl+P must not toggle the pin on and off.
+      if (e.repeat && idFor(mode, fromEvent(e)) === "pin") return e.preventDefault();
       const handled = dispatch({ type: "key", key: fromEvent(e) });
       if (cancelsDefault(e, mode, handled)) e.preventDefault();
     };
@@ -191,9 +259,9 @@ export function useLauncher(inputRef: React.RefObject<HTMLInputElement | null>) 
     [dispatch],
   );
   const toggleEffort = useCallback(() => press(shortcut("effort").keys), [press]);
-  const enterMode = useCallback(
+  const selectTab = useCallback(
     (mode: LaunchMode) => {
-      dispatch({ type: "enterMode", mode });
+      dispatch({ type: "tab", mode });
       inputRef.current?.focus();
     },
     [dispatch, inputRef],
@@ -207,7 +275,7 @@ export function useLauncher(inputRef: React.RefObject<HTMLInputElement | null>) 
     state,
     panelRef,
     removeAttachment,
-    enterMode,
+    selectTab,
     setText,
     activate,
     press,

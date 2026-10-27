@@ -1,16 +1,13 @@
 // Mirrors the serde output of apps/desktop/src-tauri/src/commands/{settings,features,providers,secrets}.rs.
 // No type here carries a secret value.
 
-import type { ThemeId } from "../theme";
-
-export type Theme = "system" | "dark" | "light";
+import type { Appearance } from "../theme";
 
 /** Payload of get_appearance / set_appearance; mirrors AppearanceView in Rust. */
-export interface AppearanceView {
-  theme: ThemeId;
-  glass: number;
-  scheme: Theme;
-}
+export type AppearanceView = Appearance;
+
+/** Fields set_appearance accepts, each optional. */
+export type AppearancePatch = Partial<Pick<AppearanceView, "scheme" | "darkTheme" | "lightTheme">>;
 
 export interface SettingsView {
   hotkeyLauncher: string;
@@ -51,7 +48,7 @@ export type ModeToggle = "find" | "query";
 export interface About {
   version: string;
   license: string;
-  links: { repo: string; docs: string; changelog: string; releases: string };
+  links: { repo: string; docs: string; changelog: string; themes: string; releases: string };
   logDir: string | null;
 }
 
@@ -257,4 +254,25 @@ export interface IntegrationPatch {
   host?: string;
   newName?: string;
   remove?: boolean;
+}
+
+/** Largest theme file the picker reads; mirrors vscode::MAX_BYTES in launcher-core. */
+export const MAX_THEME_BYTES = 1_048_576;
+
+/** One line of the import mapping table; mirrors MappingRowView in Rust. */
+export interface MappingRow {
+  role: string;
+  key: string;
+  hex: string;
+  used: boolean;
+}
+
+/** Payload of preview_vscode_theme; the fields the dialog shows (see ImportPreview in Rust). */
+export interface ImportPreview {
+  token: string;
+  id: string;
+  name: string;
+  rows: MappingRow[];
+  adjusted: string[];
+  notes: string[];
 }

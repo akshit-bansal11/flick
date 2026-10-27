@@ -1,0 +1,91 @@
+//! Theme engine: seed colours in, contrast-checked roles out.
+
+pub mod color;
+pub mod derive;
+pub mod registry;
+pub mod vscode;
+
+use serde::{Deserialize, Serialize};
+
+pub use color::Rgb;
+pub use derive::{Ratios, Resolved, Roles, resolve};
+pub use registry::{Registry, Theme};
+pub use vscode::{MappingRow, VsImport};
+
+/// Errors returned by the theme engine. Messages never carry user text.
+#[derive(thiserror::Error, Debug)]
+pub enum ThemeError {
+    /// A seed colour field is not `#rgb` or `#rrggbb`.
+    #[error("bad colour in field {field}")]
+    BadColour {
+        /// Name of the seed field that failed to parse.
+        field: &'static str,
+    },
+    /// A theme id is empty, malformed, or already taken.
+    #[error("bad or duplicate theme id")]
+    BadId,
+    /// No colours can make every role reach 4.5:1 on this seed.
+    #[error("theme is unreadable: {worst}")]
+    Unreadable {
+        /// The first failing role and its ratio, like `text 4.48 on bg`.
+        worst: String,
+    },
+    /// A theme seed list is not valid JSON for the seed schema.
+    #[error("theme JSON: {0}")]
+    Json(#[from] serde_json::Error),
+    /// An imported JSONC file has an unterminated comment or string.
+    #[error("theme file: {0}")]
+    Jsonc(&'static str),
+    /// An imported theme file is over the size cap.
+    #[error("theme file is larger than 1 MB")]
+    TooLarge,
+    /// Valid JSON that is not a usable VS Code colour theme.
+    #[error("not a VS Code colour theme: {0}")]
+    NotATheme(&'static str),
+}
+
+/// Where a seed comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Source {
+    /// Written for the app.
+    Builtin,
+    /// Ported from an upstream theme with a compatible licence.
+    Port,
+    /// Imported by the user.
+    Imported,
+}
+
+/// A theme as authored: a handful of hex colours; the rest is derived.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Seed {
+    /// Kebab-case id (`imported:<slug>` for imported themes).
+    pub id: String,
+    /// Display name.
+    pub name: String,
+    /// Origin of the seed.
+    pub source: Source,
+    /// Window background, `#rrggbb`.
+    pub bg: String,
+    /// Launcher panel colour.
+    pub panel: String,
+    /// Body text colour.
+    pub text: String,
+    /// Secondary text colour.
+    pub muted: String,
+    /// Accent colour.
+    pub accent: String,
+    /// Selected-row colour; derived when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sel: Option<String>,
+    /// Border colour; derived when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line: Option<String>,
+    /// Raised-surface colour; derived when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub surface: Option<String>,
+    /// Upstream theme URL for ports.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upstream: Option<String>,
+}

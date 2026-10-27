@@ -1,34 +1,64 @@
 "use client";
 
-import { motion } from "motion/react";
-import { type KeyboardEvent, useEffect, useRef, useState } from "react";
-import { filter, MODES, type Mode, PREFIX, SCRIPT } from "./demoData";
+import { Fragment, type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { filter, type Item, type Mode, PREFIX, PRIMARY, parse, SCRIPT, TABS } from "./demoData";
+
+interface Group {
+  name: string;
+  rows: { item: Item; index: number }[];
+}
+
+/** Folds the flat result list into consecutive groups, keeping each row's flat index. */
+function groupItems(items: Item[]): Group[] {
+  const groups: Group[] = [];
+  items.forEach((item, index) => {
+    const last = groups[groups.length - 1];
+    if (last && last.name === item.group) last.rows.push({ item, index });
+    else groups.push({ name: item.group, rows: [{ item, index }] });
+  });
+  return groups;
+}
 
 export function LauncherDemo() {
-  const [mode, setMode] = useState<Mode>("Command");
+  const [mode, setMode] = useState<Mode>("none");
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(0);
   const engaged = useRef(false);
+  const hovered = useRef(false);
   const items = filter(mode, q);
   const active = Math.min(sel, Math.max(items.length - 1, 0));
+  const current: Item | undefined = items[active];
+  const chip = Object.keys(PREFIX).find((k) => PREFIX[k] === mode);
 
-  // Autoplay: type scripted examples while idle; stops for good on focus or reduced motion.
+  // Autoplay: type scripted examples while idle; stops for good on focus or reduced motion,
+  // and holds while the pointer is over the demo (WCAG 2.2.2).
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     let alive = true;
     const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const idle = async () => {
+      while (alive && hovered.current && !engaged.current) await wait(100);
+    };
+    const show = (text: string) => {
+      const [m, rest] = parse(text);
+      setMode(m);
+      setQ(rest);
+      setSel(0);
+    };
     (async () => {
       await wait(1200);
       for (let i = 0; alive; i = (i + 1) % SCRIPT.length) {
         const text = SCRIPT[i];
         for (let c = 1; c <= text.length; c++) {
+          await idle();
           if (!alive || engaged.current) return;
-          setQ(text.slice(0, c));
+          show(text.slice(0, c));
           await wait(90);
         }
         await wait(1400);
+        await idle();
         if (!alive || engaged.current) return;
-        setQ("");
+        show("");
         await wait(500);
       }
     })();
@@ -39,7 +69,7 @@ export function LauncherDemo() {
 
   const onChange = (v: string) => {
     engaged.current = true;
-    const m = q === "" && v.length === 1 ? PREFIX[v] : undefined;
+    const m = mode === "none" && q === "" && v.length === 1 ? PREFIX[v] : undefined;
     if (m) {
       setMode(m);
       setQ("");
@@ -47,11 +77,17 @@ export function LauncherDemo() {
     setSel(0);
   };
 
+  const pickTab = (m: Mode) => {
+    engaged.current = true;
+    setMode(m);
+    setQ("");
+    setSel(0);
+  };
+
   const onKey = (e: KeyboardEvent) => {
-    if (e.key === "Tab") {
+    if (e.key === "Backspace" && q === "" && mode !== "none") {
       e.preventDefault();
-      const d = e.shiftKey ? MODES.length - 1 : 1;
-      setMode(MODES[(MODES.indexOf(mode) + d) % MODES.length]);
+      setMode("none");
       setSel(0);
     } else if ((e.key === "ArrowDown" || e.key === "ArrowUp") && items.length) {
       e.preventDefault();
@@ -61,21 +97,26 @@ export function LauncherDemo() {
   };
 
   return (
-    <motion.div
+    <div
       className="demo"
-      initial={{ opacity: 0, scale: 0.98 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.1 }}
+      onPointerEnter={() => {
+        hovered.current = true;
+      }}
+      onPointerLeave={() => {
+        hovered.current = false;
+      }}
     >
       <div className="demo-bar">
-        <span className="demo-mode">{mode}</span>
+        <span className="demo-prompt" aria-hidden="true">
+          {chip ?? "›"}
+        </span>
         <input
           className="demo-input"
           role="combobox"
           aria-label="Launcher demo input"
           aria-expanded="true"
           aria-controls="demo-list"
-          aria-activedescendant={items.length ? `demo-opt-${active}` : undefined}
+          aria-activedescendant={current ? `demo-opt-${active}` : undefined}
           placeholder="Type to search…"
           value={q}
           onFocus={() => {
@@ -87,30 +128,80 @@ export function LauncherDemo() {
           spellCheck={false}
         />
       </div>
-      <div id="demo-list" role="listbox" aria-label="Results" className="demo-list">
-        {items.map((it, i) => (
-          <div
-            key={it.title}
-            id={`demo-opt-${i}`}
-            role="option"
-            tabIndex={-1}
-            aria-selected={i === active}
-            className="demo-row"
+      <div className="demo-tabs" role="toolbar" aria-label="Modes">
+        {TABS.map((t) => (
+          <button
+            key={t.label}
+            type="button"
+            className="demo-tab"
+            aria-pressed={t.mode === mode}
+            onClick={() => pickTab(t.mode)}
           >
-            <span className="demo-tile" aria-hidden="true">
-              {it.title[0]}
-            </span>
-            <span>{it.title}</span>
-            <span className="demo-sub">{it.sub}</span>
-          </div>
+            {t.key && <b aria-hidden="true">{t.key}</b>}
+            {t.label}
+          </button>
         ))}
       </div>
-      <div className="demo-hint">
-        <span>Tab: switch mode</span>
-        <span>Up/Down: select</span>
-        <span>{">"} / ? prefixes</span>
-        <span>Demo only, nothing is sent</span>
+      <div className="demo-split">
+        <div id="demo-list" role="listbox" aria-label="Results" className="demo-left">
+          {groupItems(items).map((g) => (
+            <Fragment key={g.name}>
+              <div className="demo-group" aria-hidden="true">
+                # {g.name}
+              </div>
+              {g.rows.map(({ item, index }) => (
+                <div
+                  key={item.title}
+                  id={`demo-opt-${index}`}
+                  role="option"
+                  tabIndex={-1}
+                  aria-selected={index === active}
+                  className="demo-row"
+                >
+                  <span className="demo-mark" aria-hidden="true">
+                    {index === active ? "›" : ""}
+                  </span>
+                  <span className="demo-title">{item.title}</span>
+                </div>
+              ))}
+            </Fragment>
+          ))}
+        </div>
+        <div className="demo-right">
+          {current && (
+            <>
+              <h3 className="demo-detail-title">{current.title}</h3>
+              <dl className="demo-facts">
+                <div>
+                  <dt>kind</dt>
+                  <dd>{current.group}</dd>
+                </div>
+                <div>
+                  <dt>info</dt>
+                  <dd>{current.sub}</dd>
+                </div>
+              </dl>
+              <div className="demo-acts">
+                <span className="demo-act">
+                  {PRIMARY[mode]} <kbd className="demo-key">enter</kbd>
+                </span>
+                <span className="demo-act">
+                  pin <kbd className="demo-key">ctrl p</kbd>
+                </span>
+              </div>
+            </>
+          )}
+        </div>
       </div>
-    </motion.div>
+      <div className="demo-foot">
+        <span>
+          <kbd className="demo-key">up</kbd> <kbd className="demo-key">down</kbd> select
+        </span>
+        <span>
+          <kbd className="demo-key">backspace</kbd> leave mode
+        </span>
+        <span>demo only, nothing is sent</span>
+      </div>
+    </div>
   );
 }

@@ -29,21 +29,64 @@
   src: url("./fonts/plex-mono-500.woff2") format("woff2");
 }
 
-/* Theme-independent tokens. */
+/* Raw palette (tier 1). Every colour literal lives here once; components never read --l-raw-*. */
 :root {
-  --l-ui: "IBM Plex Sans", system-ui, "Segoe UI", sans-serif;
+  /* Neutrals and the base cool palette. */
+  --l-raw-black: #000000;
+  --l-raw-white: #ffffff;
+  --l-raw-slate-950: #0c0e12;
+  --l-raw-slate-900: #14171d;
+  --l-raw-slate-850: #1b1f27;
+  --l-raw-slate-800: #262b34;
+  --l-raw-slate-700: #1d2a33;
+  --l-raw-slate-400: #b6bbc3;
+  --l-raw-slate-100: #e8ebf0;
+  --l-raw-mist-50: #f4f8fb;
+  --l-raw-mist-100: #e7eff5;
+  --l-raw-mist-200: #d0dee8;
+  --l-raw-mist-300: #d6e7ee;
+  --l-raw-mist-600: #41545f;
+  --l-raw-mist-900: #0f2333;
+  --l-raw-cyan-50: #f2fbff;
+  --l-raw-cyan-300: #5cc8e8;
+  --l-raw-cyan-200: #6cceea;
+  --l-raw-cyan-700: #0b7699;
+  --l-raw-cyan-800: #0a5873;
+  --l-raw-cyan-950: #062130;
+  --l-raw-green-400: #4cc38a;
+  --l-raw-green-800: #16583b;
+  --l-raw-red-400: #f6ada6;
+  --l-raw-red-700: #8c2c22;
+  --l-raw-amber-400: #eab85c;
+  --l-raw-amber-800: #6c4600;
+
+  /* Alpha overlays: black and mist-900 (light-scheme ink), for scrims, flat shadows and key edges. */
+  --l-raw-black-30: rgb(0 0 0 / 0.3);
+  --l-raw-black-50: rgb(0 0 0 / 0.5);
+  --l-raw-mist-900-12: rgb(15 35 51 / 0.12);
+  --l-raw-mist-900-22: rgb(15 35 51 / 0.22);
+}
+
+/* Scales (theme independent): type, space, radius, sizes, motion, mixes. */
+:root {
+  --l-ui: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  /* Prose only: the Ask answer and long help text. Everything else is chrome and uses --l-ui. */
+  --l-prose: "IBM Plex Sans", system-ui, "Segoe UI", sans-serif;
   --l-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
 
-  --l-fs: 14px;
-  --l-fs-input: 17px;
-  --l-fs-sub: 11.8px;
-  --l-fs-meta: 11px;
-  --l-fs-action: 12px;
-  --l-fs-toast: 13px;
-  --l-fs-group: 10.5px;
-  --l-fs-math: 30.8px;
+  --l-fs-micro: 11px;
+  --l-lh-micro: 14px;
+  --l-fs-caption: 12px;
+  --l-lh-caption: 16px;
+  --l-fs-body: 13px;
+  --l-lh-body: 20px;
+  --l-fs-input: 18px;
+  --l-lh-input: 24px;
   --l-fs-title: 20px;
-  --l-lh: 1.35;
+  --l-lh-title: 26px;
+  --l-fs-display: 32px;
+  --l-lh-display: 38px;
+  /* The one unitless line height, for prose. */
   --l-lh-answer: 1.6;
 
   --l-sp-1: 2px;
@@ -56,243 +99,122 @@
   --l-sp-8: 16px;
   --l-sp-9: 20px;
   --l-sp-10: 24px;
+  --l-sp-11: 32px;
+  --l-sp-12: 48px;
 
-  --l-r: 6px;
-  /* Matches the DWM round-corner radius (DWMWCP_ROUND). */
-  --l-r-panel: 8px;
-  --l-r2: 3px;
-  --l-r-tile: 4px;
+  --l-r-key: 2px;
+  --l-r-control: 2px;
+  --l-r-card: 2px;
+  /* Fixed by DWMWCP_ROUND, do not raise it; Rust window.rs sets that corner mode. */
+  --l-r-window: 8px;
   --l-r-pill: 999px;
-  --l-row: 44px;
+
+  --l-row: 34px;
   --l-input: 56px;
-  --l-tile: 20px;
-  --l-tile-row: 26px;
   --l-tile-lg: 32px;
   --l-group-h: 28px;
-  --l-foot-h: 36px;
-  /* Input + 8 rows + action row + 3 group labels + footer + list padding: a full list is exactly centred. */
-  --l-panel-max: calc(
-    var(--l-input) +
-    var(--l-row) *
-    9 +
-    var(--l-group-h) *
-    3 +
-    var(--l-foot-h) +
-    var(--l-sp-7)
-  );
-  --l-sel-mix: 14%;
-  --l-kbd-mix: 8%;
-  --l-hover-mix: 7%;
-  --l-tile-settings: 32px;
+  --l-foot-h: 32px;
+  --l-tab-h: 32px;
+  /* Tallest panel. Rust PANEL_MAX_H in window.rs mirrors it. */
+  --l-panel-max: 540px;
   --l-nav-w: 200px;
-
+  /* Left column of the two-column panel. */
+  --l-left-w: 360px;
   /* Panel width; Rust keeps PANEL_W in window.rs equal to this. */
-  --l-panel-w: 640px;
-
-  /* Liquid glass: themes override these. Tint is the panel colour at --l-glass-alpha over the acrylic. */
-  --l-glass-alpha: 62%;
-  --l-glass-tint: color-mix(in srgb, var(--l-panel) var(--l-glass-alpha), transparent);
-  --l-glass-border: linear-gradient(to bottom, rgb(255 255 255 / 0.38), rgb(255 255 255 / 0.06));
-  --l-glass-sheen: linear-gradient(to bottom, rgb(255 255 255 / 0.1), transparent);
-  --l-glass-inner: inset 0 1px 0 rgb(255 255 255 / 0.08), inset 0 0 18px rgb(255 255 255 / 0.04);
-  --l-mask: #000;
-
-  --l-blur: none;
-  --l-tile-hue-default: 220;
-  --l-tile-hue-s: 48%;
-  --l-tile-hue-l: 38%;
-  --l-tile-text: #fff;
+  --l-panel-w: 820px;
+  /* Tray menu size: status 38 + list padding 12 + 4 items 32 + separator 9. Rust MENU_W/MENU_H mirror it. */
+  --l-menu-w: 280px;
+  --l-menu-h: 187px;
 
   /* Motion. Keystroke-driven animation uses fast/normal only, transform and opacity only, and never delays content. */
-  --l-dur-fast: 80ms;
-  --l-dur: 120ms;
-  --l-dur-slow: 200ms;
+  --l-dur-fast: 90ms;
+  --l-dur: 160ms;
+  --l-dur-slow: 280ms;
   --l-dur-caret: 1s;
   --l-stagger: 12ms;
   --l-ease-out: cubic-bezier(0.2, 0, 0, 1);
-  --l-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
-  --l-ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+
+  --l-sel-mix: 14%;
+  --l-kbd-mix: 8%;
+  --l-hover-mix: 7%;
 }
 
-/* Theme and scheme rules also match plain elements (not only :root) so Settings can preview a theme on a swatch.
-   Dark is the base; light overrides below. data-scheme is the resolved dark/light, data-theme the named theme (theme.ts). */
-:root,
-[data-theme="glass"],
-[data-theme="solid"] {
+/* Roles, dark (base). Theme and scheme rules also match plain elements (not only :root) so Settings can preview a
+   swatch. data-scheme is the resolved dark/light; named theme colours come from Rust (applyTheme in theme.ts). */
+:root {
   color-scheme: dark;
-  --l-bg: #0c0e12;
-  --l-surface: #1b1f27;
-  --l-line: #262b34;
-  --l-text: #e8ebf0;
-  --l-muted: #8f96a3;
-  --l-accent: #5cc8e8;
-  --l-ink: #062130;
-  --l-sel: #1d2a33;
-  --l-ok: #4cc38a;
-  --l-hover: var(--l-surface);
-  --l-muted-strong: #8f96a3;
-  --l-accent-text: #5cc8e8;
-  --l-ok-text: #4cc38a;
-  --l-err: #f0766b;
-  --l-warn: #e8b04a;
-  --l-scrim: rgba(0, 0, 0, 0.5);
-  --l-panel: #14171d;
-  --l-border: 1px solid var(--l-line);
-  --l-shadow: 0 22px 48px -18px rgba(0, 0, 0, 0.5);
-  --l-shadow-panel: 0 32px 80px rgb(0 0 0 / 0.6), 0 4px 16px rgb(0 0 0 / 0.4);
-  --l-highlight: inset 0 1px 0 rgb(255 255 255 / 0.05);
-  --l-shadow-settings: 0 30px 60px -24px rgba(0, 0, 0, 0.5);
-  --l-focus: var(--l-accent);
+  --l-bg: var(--l-raw-slate-950);
+  --l-panel: var(--l-raw-slate-900);
+  --l-surface: var(--l-raw-slate-850);
+  --l-line: var(--l-raw-slate-800);
+  --l-text: var(--l-raw-slate-100);
+  --l-muted: var(--l-raw-slate-400);
+  --l-accent: var(--l-raw-cyan-300);
+  --l-accent-text: var(--l-raw-cyan-200);
+  --l-on-accent: var(--l-raw-cyan-950);
+  --l-sel: var(--l-raw-slate-700);
+  --l-ok: var(--l-raw-green-400);
+  --l-err: var(--l-raw-red-400);
+  --l-warn: var(--l-raw-amber-400);
+  --l-shadow-raised: 0 1px 2px var(--l-raw-black-30);
+  --l-shadow-overlay: 0 8px 24px var(--l-raw-black-50);
+  --l-shadow-window: 0 8px 24px var(--l-raw-black-50);
 }
 
+/* Roles, light: the OS-preference fallback (no data-scheme yet), then the resolved light scheme. */
 @media (prefers-color-scheme: light) {
   :root:not([data-scheme]) {
     color-scheme: light;
-    --l-bg: #f4f8fb;
-    --l-surface: #e7eff5;
-    --l-line: #d0dee8;
-    --l-text: #0f2333;
-    --l-muted: #56707f;
-    --l-accent: #0b7699;
-    --l-ink: #f2fbff;
-    --l-sel: #d6e7ee;
-    --l-ok: #1e7f50;
-    --l-muted-strong: #4b6474;
-    --l-accent-text: #0c6a8a;
-    --l-ok-text: #1c714c;
-    --l-err: #b3382c;
-    --l-warn: #8a5a00;
-    --l-scrim: rgba(15, 35, 51, 0.35);
-    --l-panel: #ffffff;
-    --l-shadow: 0 22px 48px -18px rgba(30, 30, 50, 0.22);
-    --l-shadow-panel: 0 24px 64px rgb(30 30 50 / 0.25), 0 2px 8px rgb(30 30 50 / 0.15);
-    --l-highlight: inset 0 1px 0 rgb(255 255 255 / 0.7);
-    --l-glass-border: linear-gradient(to bottom, rgb(255 255 255 / 0.9), rgb(15 35 51 / 0.14));
-    --l-glass-sheen: linear-gradient(to bottom, rgb(255 255 255 / 0.55), transparent);
-    --l-glass-inner: inset 0 1px 0 rgb(255 255 255 / 0.7), inset 0 0 18px rgb(255 255 255 / 0.25);
+    --l-bg: var(--l-raw-mist-50);
+    --l-panel: var(--l-raw-white);
+    --l-surface: var(--l-raw-mist-100);
+    --l-line: var(--l-raw-mist-200);
+    --l-text: var(--l-raw-mist-900);
+    --l-muted: var(--l-raw-mist-600);
+    --l-accent: var(--l-raw-cyan-700);
+    --l-accent-text: var(--l-raw-cyan-800);
+    --l-on-accent: var(--l-raw-cyan-50);
+    --l-sel: var(--l-raw-mist-300);
+    --l-ok: var(--l-raw-green-800);
+    --l-err: var(--l-raw-red-700);
+    --l-warn: var(--l-raw-amber-800);
+    --l-shadow-raised: 0 1px 2px var(--l-raw-mist-900-12);
+    --l-shadow-overlay: 0 8px 24px var(--l-raw-mist-900-22);
+    --l-shadow-window: 0 8px 24px var(--l-raw-mist-900-22);
   }
 }
 
-[data-scheme="light"],
-[data-theme="frost"] {
+[data-scheme="light"] {
   color-scheme: light;
-  --l-bg: #f4f8fb;
-  --l-surface: #e7eff5;
-  --l-line: #d0dee8;
-  --l-text: #0f2333;
-  --l-muted: #56707f;
-  --l-accent: #0b7699;
-  --l-ink: #f2fbff;
-  --l-sel: #d6e7ee;
-  --l-ok: #1e7f50;
-  --l-muted-strong: #4b6474;
-  --l-accent-text: #0c6a8a;
-  --l-ok-text: #1c714c;
-  --l-err: #b3382c;
-  --l-warn: #8a5a00;
-  --l-scrim: rgba(15, 35, 51, 0.35);
-  --l-panel: #ffffff;
-  --l-shadow: 0 22px 48px -18px rgba(30, 30, 50, 0.22);
-  --l-shadow-panel: 0 24px 64px rgb(30 30 50 / 0.25), 0 2px 8px rgb(30 30 50 / 0.15);
-  --l-highlight: inset 0 1px 0 rgb(255 255 255 / 0.7);
-  --l-glass-border: linear-gradient(to bottom, rgb(255 255 255 / 0.9), rgb(15 35 51 / 0.14));
-  --l-glass-sheen: linear-gradient(to bottom, rgb(255 255 255 / 0.55), transparent);
-  --l-glass-inner: inset 0 1px 0 rgb(255 255 255 / 0.7), inset 0 0 18px rgb(255 255 255 / 0.25);
+  --l-bg: var(--l-raw-mist-50);
+  --l-panel: var(--l-raw-white);
+  --l-surface: var(--l-raw-mist-100);
+  --l-line: var(--l-raw-mist-200);
+  --l-text: var(--l-raw-mist-900);
+  --l-muted: var(--l-raw-mist-600);
+  --l-accent: var(--l-raw-cyan-700);
+  --l-accent-text: var(--l-raw-cyan-800);
+  --l-on-accent: var(--l-raw-cyan-50);
+  --l-sel: var(--l-raw-mist-300);
+  --l-ok: var(--l-raw-green-800);
+  --l-err: var(--l-raw-red-700);
+  --l-warn: var(--l-raw-amber-800);
+  --l-shadow-raised: 0 1px 2px var(--l-raw-mist-900-12);
+  --l-shadow-overlay: 0 8px 24px var(--l-raw-mist-900-22);
+  --l-shadow-window: 0 8px 24px var(--l-raw-mist-900-22);
 }
 
-/* Named themes. Text and muted colours were chosen to meet WCAG AA (4.5:1) against the panel tint at the default
-   glass strength; contrast was targeted, not measured. Glass tokens not listed keep the base values. */
-
-/* frost: light, cool blue-white. Forces the light scheme (theme.ts). Target: dark navy text on near-white tint. */
-[data-theme="frost"] {
-  --l-bg: #eef4fb;
-  --l-panel: #f1f7fd;
-  --l-surface: #dde9f6;
-  --l-line: #c3d5e9;
-  --l-text: #0c2036;
-  --l-muted: #475f77;
-  --l-muted-strong: #3f566d;
-  --l-accent: #2563c9;
-  --l-accent-text: #1d4fa6;
-  --l-ink: #ffffff;
-  --l-sel: #d0e1f5;
-  --l-glass-border: linear-gradient(to bottom, rgb(255 255 255 / 1), rgb(60 110 180 / 0.2));
-  --l-glass-sheen: linear-gradient(to bottom, rgb(255 255 255 / 0.7), rgb(190 220 255 / 0.12));
-}
-
-/* midnight: deep navy, cyan accent. Forces dark. Target: pale text on near-black navy. */
-[data-theme="midnight"] {
-  --l-bg: #050912;
-  --l-panel: #0a1020;
-  --l-surface: #131c32;
-  --l-line: #1c2842;
-  --l-text: #e6eefc;
-  --l-muted: #93a3c2;
-  --l-muted-strong: #93a3c2;
-  --l-accent: #22d3ee;
-  --l-accent-text: #22d3ee;
-  --l-ink: #021a22;
-  --l-sel: #10263a;
-  --l-glass-border: linear-gradient(to bottom, rgb(120 200 255 / 0.4), rgb(120 200 255 / 0.05));
-  --l-glass-sheen: linear-gradient(to bottom, rgb(120 200 255 / 0.1), transparent);
-}
-
-/* aurora: dark with a teal-to-violet sheen, violet accent. Forces dark. Target: pale text on deep indigo. */
-[data-theme="aurora"] {
-  --l-bg: #0a0814;
-  --l-panel: #120f24;
-  --l-surface: #1d1838;
-  --l-line: #2b2450;
-  --l-text: #ece9fb;
-  --l-muted: #a39ec4;
-  --l-muted-strong: #a39ec4;
-  --l-accent: #a78bfa;
-  --l-accent-text: #b8a2fb;
-  --l-ink: #160a38;
-  --l-sel: #251d49;
-  --l-glass-border: linear-gradient(135deg, rgb(45 212 191 / 0.5), rgb(167 139 250 / 0.5));
-  --l-glass-sheen: linear-gradient(
-    135deg,
-    rgb(45 212 191 / 0.16),
-    rgb(167 139 250 / 0.16) 60%,
-    transparent
-  );
-}
-
-/* ember: dark warm, amber accent. Forces dark. Target: warm off-white text on near-black brown. */
-[data-theme="ember"] {
-  --l-bg: #100a07;
-  --l-panel: #1a110c;
-  --l-surface: #261913;
-  --l-line: #3a281d;
-  --l-text: #f6ece4;
-  --l-muted: #b39a89;
-  --l-muted-strong: #b39a89;
-  --l-accent: #f5a524;
-  --l-accent-text: #f5a524;
-  --l-ink: #2a1600;
-  --l-sel: #33210f;
-  --l-glass-border: linear-gradient(to bottom, rgb(255 190 110 / 0.4), rgb(255 190 110 / 0.05));
-  --l-glass-sheen: linear-gradient(to bottom, rgb(255 190 110 / 0.1), transparent);
-}
-
-/* solid: opaque panel (tint = panel). theme.ts sets data-glass="off", which also drops the sheen. Uses the base palette. */
-[data-theme="solid"] {
-  --l-glass-tint: var(--l-panel);
-  --l-glass-sheen: none;
-}
-
-/* Opaque panel: Windows transparency off (data-glass set from Rust) or reduced transparency. */
-:root[data-glass="off"] {
-  --l-glass-tint: var(--l-panel);
-  --l-glass-sheen: none;
-}
-
-@media (prefers-reduced-transparency: reduce) {
-  :root {
-    --l-glass-tint: var(--l-panel);
-    --l-glass-sheen: none;
-  }
+/* Derived roles: Rust writes the role colours; everything else is computed from them. Declared on the element so a
+   themed child (the tour demo) recomputes them. */
+:root,
+[data-scheme] {
+  --l-muted-strong: var(--l-muted);
+  --l-ok-text: var(--l-ok);
+  --l-scrim: color-mix(in oklab, var(--l-bg) 70%, transparent);
+  --l-focus: var(--l-accent-text);
+  --l-control-edge: var(--l-muted);
+  --l-hover: var(--l-surface);
+  --l-border: 1px solid var(--l-line);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -302,9 +224,4 @@
     --l-dur-slow: 0ms;
     --l-stagger: 0ms;
   }
-}
-
-/* Declared on the element so var(--h) resolves per tile, not at :root. */
-.tile-letter {
-  --l-tile-bg: hsl(var(--h, var(--l-tile-hue-default)) var(--l-tile-hue-s) var(--l-tile-hue-l));
 }

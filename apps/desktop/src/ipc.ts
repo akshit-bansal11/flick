@@ -5,25 +5,31 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import type { Appearance } from "./theme";
+import type { AppearancePatch } from "./settings/types";
+import type { Appearance, ThemeView } from "./theme";
 import type {
   AskEvent,
   AskRequest,
   ExplainCaptured,
+  HomeView,
   Mode,
   Outcome,
   SearchResponse,
-  SearchScope,
   ShownPayload,
   ThinkingModes,
 } from "./types";
 
-export const search = (req: { seq: number; mode: Mode; text: string; scope?: SearchScope }) =>
+export const search = (req: {
+  seq: number;
+  mode: Mode;
+  text: string;
+  sources: readonly string[];
+}) =>
   invoke<SearchResponse>("search", {
     seq: req.seq,
     mode: req.mode,
     text: req.text,
-    scope: req.scope,
+    sources: req.sources,
   });
 
 export const launch = (itemId: string, admin: boolean) =>
@@ -57,11 +63,18 @@ export function askStream(req: AskRequest, onEvent: (e: AskEvent) => void): Prom
 
 export const listThinkingModes = () => invoke<ThinkingModes>("list_thinking_modes");
 
+export const homeItems = () => invoke<HomeView>("home_items");
+
+/** Pins or unpins an item; returns the refreshed home view. Rejects with `pin_failed` when refused. */
+export const togglePin = (itemId: string) => invoke<HomeView>("toggle_pin", { itemId });
+
 export const setThinkingMode = (id: string) => invoke<void>("set_thinking_mode", { id });
 
 export const cancelAsk = (askId: string) => invoke<void>("cancel_ask", { askId });
 
 export const openLink = (url: string) => invoke<void>("open_link", { url });
+
+export const webSearch = (text: string) => invoke<Outcome>("web_search", { text });
 
 export const hideLauncher = () => invoke<void>("hide_launcher");
 
@@ -71,10 +84,36 @@ export const reportShown = (shownId: number) => invoke<void>("report_shown", { s
 
 export const openSettings = (section?: string) => invoke<void>("open_settings", { section });
 
-export type ShownEvent = ShownPayload & { glass?: boolean; appearance?: Appearance };
+export type ShownEvent = ShownPayload & {
+  appearance?: Appearance;
+  /** Live source ids (apps, files, ask, running feature ids); absent from older shells. */
+  sources?: string[];
+  /** Title of the first web shortcut when the web feature runs. */
+  webTitle?: string | null;
+};
+
+/** Every theme with its resolved roles; loaded once, never per keystroke. */
+export const listThemes = () => invoke<ThemeView[]>("list_themes");
+
+/** Saves appearance fields (the quick pick's apply); returns the appearance now in effect. */
+export const setAppearance = (patch: AppearancePatch) =>
+  invoke<Appearance>("set_appearance", patch);
 
 export const onShown = (cb: (p: ShownEvent) => void): Promise<UnlistenFn> =>
   listen<ShownEvent>("launcher://shown", (e) => cb(e.payload));
+
+export type TrayMenuEvent = {
+  appVersion: string;
+  hotkey: string;
+  update: { version: string } | null;
+  appearance?: Appearance;
+};
+
+export const onTrayMenu = (cb: (p: TrayMenuEvent) => void): Promise<UnlistenFn> =>
+  listen<TrayMenuEvent>("tray://menu", (e) => cb(e.payload));
+
+export const trayAction = (action: "open" | "settings" | "update" | "quit") =>
+  invoke<void>("tray_action", { action });
 
 export const onExplainCaptured = (cb: (c: ExplainCaptured) => void): Promise<UnlistenFn> =>
   listen<ExplainCaptured>("explain://captured", (e) => cb(e.payload));

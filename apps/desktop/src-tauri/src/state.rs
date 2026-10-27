@@ -476,6 +476,10 @@ pub struct AppState {
     pub find_run: FindRun,
     /// Optional Spotify connection (also feeds the media feature).
     pub spotify: Arc<Spotify>,
+    /// Known themes with their derived roles.
+    pub themes: ArcSwap<launcher_core::theme::Registry>,
+    /// The one VS Code theme import waiting for the user to confirm it.
+    pub pending_import: Mutex<Option<crate::commands::themes::PendingImport>>,
     /// Feature registry.
     pub registry: Arc<Registry>,
     /// Handles given to features.
@@ -920,6 +924,8 @@ pub fn init(app: &tauri::App) -> anyhow::Result<()> {
         vault,
         spotify,
         find_run: FindRun::default(),
+        themes: ArcSwap::from_pointee(build_themes()),
+        pending_import: Mutex::new(None),
         registry: Arc::new(Registry::new()),
         ctx,
         icons: Icons::new(index_apps::icons::IconCache::new(&cache_dir)),
@@ -941,6 +947,10 @@ pub fn init(app: &tauri::App) -> anyhow::Result<()> {
 pub fn start(app: &AppHandle) {
     let handle = app.clone();
     let state: Arc<AppState> = Arc::clone(&*app.state::<Arc<AppState>>());
+    let (themes_app, themes_state) = (app.clone(), state.clone());
+    tauri::async_runtime::spawn(async move {
+        crate::commands::themes::load_imported(&themes_app, themes_state).await;
+    });
     let s = state.clone();
     tauri::async_runtime::spawn(async move {
         for f in builtin_features_with(
@@ -1619,6 +1629,14 @@ pub fn shutdown(app: &AppHandle) {
         tracing::warn!(%err, "secret metadata flush failed");
     }
     state.save_snapshot();
+}
+
+/// Bundled themes; a bad seed is logged and only the two code defaults are kept.
+pub(crate) fn build_themes() -> launcher_core::theme::Registry {
+    launcher_core::theme::Registry::builtin().unwrap_or_else(|e| {
+        tracing::warn!("bundled themes failed to load, using defaults only: {e}");
+        launcher_core::theme::Registry::defaults_only()
+    })
 }
 
 #[cfg(test)]

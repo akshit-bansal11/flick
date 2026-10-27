@@ -14,27 +14,27 @@
   background: var(--l-panel);
   color: var(--l-text);
   border: var(--l-border);
-  border-radius: var(--l-r-panel);
-  box-shadow: var(--l-shadow);
+  border-radius: var(--l-r-card);
   font-family: var(--l-ui);
-  font-size: var(--l-fs);
-  line-height: var(--l-lh);
-  animation: key-dialog-in var(--l-dur) var(--l-ease-out);
+  font-size: var(--l-fs-body);
+  line-height: var(--l-lh-body);
 }
 .key-dialog h2 {
   margin: 0;
   font-size: var(--l-fs-title);
+  line-height: var(--l-lh-title);
 }
 .key-dialog p {
   margin: 0;
-  color: var(--l-muted-strong);
+  color: var(--l-muted);
+  font-family: var(--l-prose);
 }
 .key-dialog input[type="password"] {
   padding: var(--l-sp-4) var(--l-sp-6);
   background: var(--l-bg);
   color: var(--l-text);
   border: var(--l-border);
-  border-radius: var(--l-r2);
+  border-radius: var(--l-r-control);
   font-family: var(--l-mono);
 }
 .key-dialog-ack {
@@ -50,33 +50,44 @@
   justify-content: flex-end;
   gap: var(--l-sp-4);
 }
-.key-dialog button {
-  padding: var(--l-sp-3) var(--l-sp-8);
-  background: transparent;
-  color: var(--l-text);
-  border: var(--l-border);
-  border-radius: var(--l-r);
-  cursor: pointer;
-  font: inherit;
-}
-.key-dialog button:last-child {
-  background: var(--l-accent);
-  color: var(--l-ink);
-}
-.key-dialog button:disabled {
-  opacity: 0.5;
-}
 .key-dialog :focus-visible {
   outline: 2px solid var(--l-focus);
   outline-offset: 1px;
 }
-@keyframes key-dialog-in {
-  from {
-    opacity: 0;
-  }
+.imp-dialog {
+  width: min(640px, 92vw);
+  max-height: 90vh;
+  overflow-y: auto;
 }
-@media (prefers-reduced-motion: reduce) {
-  .key-dialog {
-    animation: none;
-  }
+.imp-map {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--l-fs-caption);
+}
+.imp-map th,
+.imp-map td {
+  padding: var(--l-sp-2) var(--l-sp-4) var(--l-sp-2) 0;
+  text-align: left;
+  font-weight: normal;
+}
+.imp-map thead th {
+  color: var(--l-muted);
+}
+.imp-map td:nth-child(3) {
+  font-family: var(--l-mono);
+  white-space: nowrap;
+}
+.imp-sw {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  margin-right: var(--l-sp-3);
+  vertical-align: middle;
+  border-radius: var(--l-r-control);
+  box-shadow: 0 0 0 1px var(--l-line);
+}
+.imp-notes {
+  margin: 0;
+  padding-left: var(--l-sp-7);
+  color: var(--l-warn);
 }

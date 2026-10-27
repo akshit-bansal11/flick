@@ -1,0 +1,5 @@
+/* A chord as plain mono text: no box, no fill. */
+.key {
+  font: 500 var(--l-fs-micro) / 1 var(--l-mono);
+  color: var(--l-text);
+}

@@ -1,5 +1,4 @@
 //! System tray and the Settings window.
-use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
@@ -20,37 +19,26 @@ pub fn show_launcher(app: &AppHandle, reason: &str) {
     }
 }
 
-/// Builds the tray icon with Open, Settings, update and Quit entries.
+/// Builds the tray icon: left click shows the launcher, right click opens the menu
+/// (rendered by the launcher window, see `window::show_menu`).
 pub fn setup(app: &tauri::App) -> anyhow::Result<()> {
-    let open = MenuItem::with_id(app, "open", "Open", true, None::<&str>)?;
-    let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
-    let upd = MenuItem::with_id(app, "update", "Check for updates", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&open, &settings, &upd, &quit])?;
-    crate::update::init(app, upd);
+    crate::update::init(app);
     let mut builder = TrayIconBuilder::new()
         .tooltip(app.package_info().name.clone())
-        .menu(&menu)
-        .show_menu_on_left_click(false)
-        .on_menu_event(|app, event| match event.id.as_ref() {
-            "open" => show_launcher(app, "tray"),
-            "settings" => {
-                if let Err(err) = open_settings_window(app, None) {
-                    tracing::warn!(%err, "open settings failed");
-                }
-            }
-            "update" => crate::update::on_tray(app),
-            "quit" => app.exit(0),
-            _ => {}
-        })
         .on_tray_icon_event(|tray, event| {
-            if let TrayIconEvent::Click {
-                button: MouseButton::Left,
+            let TrayIconEvent::Click {
+                button,
                 button_state: MouseButtonState::Up,
+                position,
                 ..
             } = event
-            {
-                show_launcher(tray.app_handle(), "tray");
+            else {
+                return;
+            };
+            match button {
+                MouseButton::Left => show_launcher(tray.app_handle(), "tray"),
+                MouseButton::Right => window::show_menu(tray.app_handle(), position),
+                MouseButton::Middle => {}
             }
         });
     if let Some(icon) = app.default_window_icon() {
@@ -74,7 +62,7 @@ pub fn open_settings_window(app: &AppHandle, section: Option<&str>) -> anyhow::R
     }
     let url = match section {
         Some(s) => format!("settings.html#{s}"),
-        None => "settings.html".to_string(),
+        None => "settings.html".to_owned(),
     };
     let win = WebviewWindowBuilder::new(app, SETTINGS_LABEL, WebviewUrl::App(url.into()))
         .title(format!("{} Settings", app.package_info().name))
@@ -84,16 +72,107 @@ pub fn open_settings_window(app: &AppHandle, section: Option<&str>) -> anyhow::R
         .visible(true)
         .center()
         .build()?;
+    sync_settings_theme(app);
     // Hotkeys always come back when Settings goes away, even if the tour did not unmount cleanly.
     let handle = app.clone();
-    win.on_window_event(move |event| {
-        if matches!(
-            event,
-            tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed
-        ) {
+    win.on_window_event(move |event| match event {
+        tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed => {
             crate::hotkey::set_paused(&handle, false);
         }
+        // The OS resets the caption on a system theme change; put Flick's scheme back.
+        // Settings also re-resolves a "system" scheme.
+        tauri::WindowEvent::ThemeChanged(_) => {
+            sync_settings_theme(&handle);
+            if let Err(err) = handle.emit(
+                "settings://changed",
+                serde_json::json!({ "section": "appearance" }),
+            ) {
+                tracing::warn!(%err, "emit failed");
+            }
+        }
+        _ => {}
     });
+    Ok(())
+}
+
+/// Puts Flick's dark/light scheme on the native Settings caption, when the window exists.
+pub fn sync_settings_theme(app: &AppHandle) {
+    #[cfg(windows)]
+    if let Some(win) = app.get_webview_window(SETTINGS_LABEL) {
+        let dark = settings_dark(app);
+        let res = win
+            .hwnd()
+            .map_err(anyhow::Error::from)
+            .and_then(|h| win::dwm::set_dark_frame(h.0 as isize, dark).map_err(Into::into));
+        if let Err(err) = res {
+            tracing::warn!(%err, "settings theme");
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = app;
+}
+
+/// Whether Settings renders dark under the saved appearance: the active theme's `dark` flag,
+/// which follows the scheme ("system" asks Windows).
+#[cfg(windows)]
+fn settings_dark(app: &AppHandle) -> bool {
+    app.try_state::<std::sync::Arc<crate::state::AppState>>()
+        .map_or_else(win::dwm::system_prefers_dark, |st| {
+            crate::commands::themes::active_theme(&st).map_or_else(
+                || crate::commands::themes::scheme_is_dark(&st.config.load().appearance.scheme),
+                |t| t.dark,
+            )
+        })
+}
+
+/// An item of the tray menu, as the launcher UI sends it.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+enum TrayAction {
+    Open,
+    Settings,
+    Update,
+    Quit,
+}
+
+impl TrayAction {
+    fn parse(s: &str) -> Option<Self> {
+        match s {
+            "open" => Some(Self::Open),
+            "settings" => Some(Self::Settings),
+            "update" => Some(Self::Update),
+            "quit" => Some(Self::Quit),
+            _ => None,
+        }
+    }
+}
+
+/// Runs a tray menu item. Accepted only while the launcher window shows the menu.
+#[tauri::command]
+pub async fn tray_action(app: AppHandle, action: String) -> Result<(), CommandError> {
+    let action = TrayAction::parse(&action)
+        .ok_or_else(|| CommandError::new("invalid_action", "unknown tray action"))?;
+    // Check and clear in one step: a second concurrent call finds the menu already taken.
+    if !window::take_menu(&app) {
+        return Err(CommandError::new(
+            "not_available",
+            "the tray menu is not open",
+        ));
+    }
+    match action {
+        // Show in place, without a hide first: only `launcher://shown` is sent, and Root hands
+        // its payload to the launcher it mounts in place of the menu.
+        TrayAction::Open => window::show(&app, "tray"),
+        TrayAction::Settings => {
+            window::hide_now(&app);
+            open_settings_window(&app, None)?;
+        }
+        TrayAction::Update => {
+            window::hide_now(&app);
+            crate::update::on_tray(&app);
+        }
+        // RunEvent::Exit runs the normal shutdown.
+        TrayAction::Quit => app.exit(0),
+    }
     Ok(())
 }
 
@@ -102,4 +181,20 @@ pub fn open_settings_window(app: &AppHandle, section: Option<&str>) -> anyhow::R
 pub async fn open_settings(app: AppHandle, section: Option<String>) -> Result<(), CommandError> {
     open_settings_window(&app, section.as_deref())?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tray_actions_parse() {
+        assert_eq!(TrayAction::parse("open"), Some(TrayAction::Open));
+        assert_eq!(TrayAction::parse("settings"), Some(TrayAction::Settings));
+        assert_eq!(TrayAction::parse("update"), Some(TrayAction::Update));
+        assert_eq!(TrayAction::parse("quit"), Some(TrayAction::Quit));
+        for bad in ["", "Quit", " open", "exit", "settings\0"] {
+            assert_eq!(TrayAction::parse(bad), None, "{bad:?}");
+        }
+    }
 }

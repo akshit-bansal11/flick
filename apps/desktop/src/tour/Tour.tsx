@@ -1,9 +1,11 @@
 import type { CSSProperties } from "react";
+import { Keycaps } from "../Keycaps";
 import "../launcher/launcher.css";
+import "../settings/settings.css";
 import { MODES } from "../launcher/reducer";
 import { DemoLauncher } from "./DemoLauncher";
 import { Logo } from "./Logo";
-import { isLastStep, TOUR_STEPS, TOUR_THEMES } from "./steps";
+import { isLastStep, TOUR_STEPS } from "./steps";
 import { useTour } from "./useTour";
 import "./tour.css";
 
@@ -12,7 +14,11 @@ interface Props {
   onDone: (completed: boolean) => void;
 }
 
-const SHOW_LABEL = { type: "Show me", hotkey: "Show me", select: "Show me", theme: "Next theme" };
+/** Inline style carrying CSS custom properties; the template-literal index keeps it cast-free. */
+type CssVars = CSSProperties & Record<`--${string}`, string | number>;
+const cssVars = (vars: CssVars): CSSProperties => vars;
+
+const SHOW_LABEL = { type: "show me", hotkey: "show me", select: "show me", theme: "next theme" };
 
 /** Caps with a unique id each, since a chord list can repeat a cap ("Ctrl" twice). */
 const capList = (keys: string[]) =>
@@ -28,17 +34,15 @@ export function Tour({ onDone }: Props) {
   return (
     <section className="tour" aria-label="Interactive tour">
       <div className="tour-stage">
-        <DemoLauncher demo={t.demo} theme={t.theme} open={t.open} />
+        <DemoLauncher demo={t.demo} theme={t.themeView} open={t.open} />
       </div>
       <div className="tour-card" key={def.id} aria-live="polite">
         <h2 className="tour-title">{def.title}</h2>
         <p className="tour-body">{def.body}</p>
         {t.keys.length > 0 && (
           <p className="tour-keys">
-            {capList(t.keys).map((c, i) => (
-              <kbd key={c.id} className="kbd tour-cap" style={{ "--i": i } as CSSProperties}>
-                {c.k}
-              </kbd>
+            {capList(t.keys).map((c) => (
+              <Keycaps key={c.id} caps={[c.k]} />
             ))}
           </p>
         )}
@@ -50,16 +54,20 @@ export function Tour({ onDone }: Props) {
         {def.id === "themes" && (
           <fieldset className="tour-themes">
             <legend className="sr-only">Themes</legend>
-            {TOUR_THEMES.map((id) => (
+            {t.themes.map((v) => (
               <button
-                key={id}
+                key={v.id}
                 type="button"
                 className="tour-swatch"
-                data-theme={id}
-                aria-pressed={t.theme === id}
-                onClick={() => t.pickTheme(id)}
+                style={cssVars({
+                  "--sw-panel": v.roles.panel,
+                  "--sw-text": v.roles.text,
+                  "--sw-line": v.roles.line,
+                })}
+                aria-pressed={t.theme === v.id}
+                onClick={() => t.pickTheme(v.id)}
               >
-                {id}
+                {v.name}
               </button>
             ))}
             <button type="button" className="tour-link" onClick={t.saveTheme}>
@@ -73,7 +81,7 @@ export function Tour({ onDone }: Props) {
             <p className="tour-prefixes">
               {(Object.keys(MODES) as (keyof typeof MODES)[]).map((m) => (
                 <span key={m}>
-                  <kbd className="kbd">{MODES[m].prefix}</kbd> {MODES[m].label}
+                  <Keycaps caps={[MODES[m].prefix]} /> {MODES[m].label}
                 </span>
               ))}
             </p>
@@ -81,7 +89,7 @@ export function Tour({ onDone }: Props) {
         )}
         <div className="tour-actions">
           {def.show && (
-            <button type="button" className="s-btn" onClick={t.showMe}>
+            <button type="button" className="btn" onClick={t.showMe}>
               {SHOW_LABEL[def.show]}
             </button>
           )}
@@ -111,11 +119,11 @@ export function Tour({ onDone }: Props) {
               Skip tour
             </button>
           )}
-          <button type="button" className="s-btn" onClick={t.back} disabled={t.step === 0}>
-            Back
+          <button type="button" className="btn" onClick={t.back} disabled={t.step === 0}>
+            back
           </button>
-          <button type="button" className="s-btn s-btn-primary" onClick={t.next}>
-            {last ? "Finish" : "Next"}
+          <button type="button" className="btn pri" onClick={t.next}>
+            {last ? "finish" : "next"}
           </button>
         </div>
       </nav>
